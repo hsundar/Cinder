@@ -251,12 +251,18 @@ fn main() {
     let mut np = NowPlaying {
         skin: None,
         tape: None,
-        title: if std::env::args().any(|a| a == "--long-title") {
+        title: if std::env::args().any(|a| a == "--devanagari") {
+            "कश्चित् कान्ताविरहगुरुणा स्वाधिकारात्प्रमत्तः"
+        } else if std::env::args().any(|a| a == "--long-title") {
             "Sinfonia concertante for Violin, Viola and Orchestra in E-flat major, K. 364 — III. Presto"
         } else {
             "Atlas Hands"
         },
-        artist: "Benjamin Francis Leftwich",
+        artist: if std::env::args().any(|a| a == "--devanagari") {
+            "बलवन्त राई भट्ट (भावरंग)"
+        } else {
+            "Benjamin Francis Leftwich"
+        },
         codec: "FLAC · 24bit / 96.0 kHz",
         badge: "FLAC 24/96",
         clock: "14:32",
@@ -417,7 +423,7 @@ fn big_library() -> Library {
             albums: group_albums,
         });
     }
-    let artist_rows = artists
+    let mut artist_rows: Vec<ArtistRow> = artists
         .iter()
         .enumerate()
         .map(|(ai, a)| ArtistRow {
@@ -428,6 +434,63 @@ fn big_library() -> Library {
             album_ids: Vec::new(),
         })
         .collect();
+    // `--devanagari`: one album with real Devanagari tags (Balwant Rai Bhatt's lecture series), to
+    // drive the shaped-text path (`cinder_ui::shape`) through the navigator: conjuncts, the ि sign,
+    // and truncation of titles too long for a row.
+    if std::env::args().any(|a| a == "--devanagari") {
+        let (artist, album) = ("बलवन्त राई भट्ट (भावरंग)", "रागो की प्रस्तुति");
+        let titles = [
+            "राग वाक्यों का महत्त्व",
+            "वादी भेदे राग भेद",
+            "रूप एक नाम अनेक",
+            "बन्दिषो मे राग ताल शृङ्गार - १ (रागों की प्रस्तुति में राग वाक्यों का महत्त्व)",
+            "कश्चित् कान्ताविरहगुरुणा स्वाधिकारात्प्रमत्तः",
+        ];
+        let track_list: Vec<SongRow> = titles
+            .iter()
+            .enumerate()
+            .map(|(i, t)| SongRow {
+                title: t.to_string(),
+                artist: artist.to_string(),
+                dur: format!("{}:{:02}", 18 + i, (i * 17) % 60),
+                art: album.to_string(),
+                object_id: 9000 + i as i64,
+                album_id: 900,
+                disc: 1,
+                track: i as i32 + 1,
+                year: 2004,
+                ..Default::default()
+            })
+            .collect();
+        songs.extend(track_list.iter().cloned());
+        album_groups.insert(
+            0,
+            ArtistGroup {
+                artist: artist.to_string(),
+                albums: vec![AlbumRow {
+                    name: album.to_string(),
+                    artist: artist.to_string(),
+                    year: "2004".into(),
+                    tracks: titles.len() as u32,
+                    art: album.to_string(),
+                    album_id: 900,
+                    added: 2026,
+                    track_list,
+                    ..Default::default()
+                }],
+            },
+        );
+        artist_rows.insert(
+            0,
+            ArtistRow {
+                name: artist.to_string(),
+                albums: 1,
+                tracks: titles.len() as u32,
+                arts: vec![album.to_string()],
+                album_ids: Vec::new(),
+            },
+        );
+    }
     songs.sort_by(|x, y| x.title.cmp(&y.title));
     // One playlist of the user's own (so the page has its edit bar and EDIT) and one of Sony's.
     let playlists = vec![

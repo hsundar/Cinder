@@ -158,7 +158,9 @@ const GLYPH_CACHE_MAX: usize = 8192;
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 struct GlyphKey {
     font: u8,
-    ch: char,
+    /// The character, or for a shaped face (font ids `SHAPED_FONT_ID..`, see `shaped_glyph`) the
+    /// glyph id: a shaped glyph has no single character, and the two cannot collide across fonts.
+    ch: u32,
     /// The size's exact bits (`f32::to_bits`) — see above for why this is not a bucket.
     size_q: u32,
 }
@@ -555,6 +557,25 @@ impl FontSet {
         size: f32,
     ) -> (Metrics, std::sync::Arc<Vec<u8>>) {
         let (font_id, font) = self.resolve(fam, w, ch);
+        self.cached(font_id, ch as u32, size, || font.rasterize(ch, size))
+    }
+
+    /// Cached rasterisation of glyph `id` of the bundled shaped face (`shape.rs`), for weight `w`.
+    fn shaped_glyph(&self, w: Weight, id: u16, size: f32) -> (Metrics, std::sync::Arc<Vec<u8>>) {
+        let bold = crate::shape::face_for(w);
+        let font = crate::shape::raster(bold);
+        self.cached(SHAPED_FONT_ID + bold as u8, id as u32, size, || {
+            font.rasterize_indexed(id, size)
+        })
+    }
+
+    fn cached(
+        &self,
+        font_id: u8,
+        ch: u32,
+        size: f32,
+        rasterize: impl FnOnce() -> (Metrics, Vec<u8>),
+    ) -> (Metrics, std::sync::Arc<Vec<u8>>) {
         let key = GlyphKey {
             font: font_id,
             ch,
@@ -563,7 +584,7 @@ impl FontSet {
         if let Some(hit) = self.glyph_cache.borrow().get(&key) {
             return (hit.0, hit.1.clone());
         }
-        let (m, bitmap) = font.rasterize(ch, size);
+        let (m, bitmap) = rasterize();
         let rc = std::sync::Arc::new(bitmap);
         let mut cache = self.glyph_cache.borrow_mut();
         // ponytail: drop-all at the cap, not LRU. Latin chrome is a few hundred entries; only a
@@ -640,14 +661,9 @@ pub fn draw_land(
     let size = scaled(st.size);
     let track = st.tracking * size;
     let w = crate::canvas::W as i32;
-    let mut pen = x;
-    for ch in s.chars() {
-        let (m, bitmap) = fonts.glyph(st.fam, st.weight, ch, size);
-        if pen + m.advance_width > x + max_w {
-            break;
-        }
-        let gx0 = (pen + m.xmin as f32).round() as i32;
-        let gy0 = (baseline - (m.height as f32 + m.ymin as f32)).round() as i32;
+    let blit = |canvas: &mut Canvas, ox: f32, rise: f32, m: &Metrics, bitmap: &[u8]| {
+        let gx0 = (ox + m.xmin as f32).round() as i32;
+        let gy0 = (baseline - rise - (m.height as f32 + m.ymin as f32)).round() as i32;
         for gy in 0..m.height {
             for gx in 0..m.width {
                 let a = bitmap[gy * m.width + gx];
@@ -657,7 +673,46 @@ pub fn draw_land(
                 }
             }
         }
-        pen += m.advance_width + track;
+    };
+    let mut pen = x;
+    let bold = crate::shape::face_for(st.weight);
+    for p in crate::shape::pieces(s) {
+        match p {
+            crate::shape::Piece::Char(ch) => {
+                let (m, bitmap) = fonts.glyph(st.fam, st.weight, ch, size);
+                if pen + m.advance_width > x + max_w {
+                    return pen;
+                }
+                blit(canvas, pen, 0.0, &m, &bitmap);
+                pen += m.advance_width + track;
+            }
+            crate::shape::Piece::Run(r) => {
+                let glyphs = crate::shape::shape(r, bold, size);
+                // Stop at a whole cluster: half an akshara (a ि without its consonant) is worse
+                // than none of it.
+                let mut i = 0;
+                while i < glyphs.len() {
+                    let c = glyphs[i].cluster;
+                    let end = glyphs[i..]
+                        .iter()
+                        .position(|g| g.cluster != c)
+                        .map_or(glyphs.len(), |n| i + n);
+                    let cw: f32 = glyphs[i..end]
+                        .iter()
+                        .map(|g| g.advance + shaped_track(g, track))
+                        .sum();
+                    if pen + cw > x + max_w {
+                        return pen;
+                    }
+                    for g in &glyphs[i..end] {
+                        let (m, bitmap) = fonts.shaped_glyph(st.weight, g.id, size);
+                        blit(canvas, pen + g.x_off, g.y_off, &m, &bitmap);
+                        pen += g.advance + shaped_track(g, track);
+                    }
+                    i = end;
+                }
+            }
+        }
     }
     pen
 }
@@ -741,13 +796,37 @@ pub struct TextStyle {
 pub fn measure(fonts: &FontSet, s: &str, st: &TextStyle) -> f32 {
     let size = scaled(st.size);
     let track = st.tracking * size;
-    s.chars()
-        .map(|ch| {
-            let (_, font) = fonts.resolve(st.fam, st.weight, ch);
-            font.metrics(ch, size).advance_width + track
+    let char_w = |ch: char| {
+        let (_, font) = fonts.resolve(st.fam, st.weight, ch);
+        font.metrics(ch, size).advance_width + track
+    };
+    if !crate::shape::needs_shaping(s) {
+        return s.chars().map(char_w).sum();
+    }
+    let bold = crate::shape::face_for(st.weight);
+    crate::shape::pieces(s)
+        .into_iter()
+        .map(|p| match p {
+            crate::shape::Piece::Char(ch) => char_w(ch),
+            crate::shape::Piece::Run(r) => crate::shape::shape(r, bold, size)
+                .iter()
+                .map(|g| g.advance + shaped_track(g, track))
+                .sum(),
         })
         .sum()
 }
+
+/// Tracking inside a shaped run: none. Devanagari is not letter-spaced — the headline (shirorekha)
+/// joins the letters of a word, and spacing them out breaks it into pieces, which is what the
+/// tracked small-caps headers did to बलवन्त before this. The spaces between words are not part of a
+/// run, so a tracked header still keeps its wider rhythm between them.
+fn shaped_track(_g: &crate::shape::Glyph, _track: f32) -> f32 {
+    0.0
+}
+
+/// Font ids for the bundled shaped faces in the glyph cache: Regular, then Bold. Clear of
+/// `font_index` (0..6), the Chinese UI subset (8) and the device chain (16..).
+const SHAPED_FONT_ID: u8 = 40;
 
 /// Draw `s` with its baseline at (`x`, `baseline`). Returns the pen x after.
 pub fn draw(
@@ -767,11 +846,11 @@ pub fn draw(
     if audit {
         canvas.text_run(s);
     }
-    for ch in s.chars() {
-        let (m, bitmap) = fonts.glyph(st.fam, st.weight, ch, size); // cached rasterise
-        let gx0 = (pen + m.xmin as f32).round() as i32;
+    // One glyph's coverage onto the canvas, its origin at (ox, the baseline raised by `rise`).
+    let blit = |canvas: &mut Canvas, ox: f32, rise: f32, m: &Metrics, bitmap: &[u8]| {
+        let gx0 = (ox + m.xmin as f32).round() as i32;
         // fontdue: bitmap top is `ymin + height` above the baseline.
-        let gy0 = (baseline - (m.height as f32 + m.ymin as f32)).round() as i32;
+        let gy0 = (baseline - rise - (m.height as f32 + m.ymin as f32)).round() as i32;
         for gy in 0..m.height {
             for gx in 0..m.width {
                 let a = bitmap[gy * m.width + gx];
@@ -784,7 +863,31 @@ pub fn draw(
                 }
             }
         }
-        pen += m.advance_width + track;
+    };
+    if !crate::shape::needs_shaping(s) {
+        for ch in s.chars() {
+            let (m, bitmap) = fonts.glyph(st.fam, st.weight, ch, size); // cached rasterise
+            blit(canvas, pen, 0.0, &m, &bitmap);
+            pen += m.advance_width + track;
+        }
+        return pen;
+    }
+    let bold = crate::shape::face_for(st.weight);
+    for p in crate::shape::pieces(s) {
+        match p {
+            crate::shape::Piece::Char(ch) => {
+                let (m, bitmap) = fonts.glyph(st.fam, st.weight, ch, size);
+                blit(canvas, pen, 0.0, &m, &bitmap);
+                pen += m.advance_width + track;
+            }
+            crate::shape::Piece::Run(r) => {
+                for g in crate::shape::shape(r, bold, size).iter() {
+                    let (m, bitmap) = fonts.shaped_glyph(st.weight, g.id, size);
+                    blit(canvas, pen + g.x_off, g.y_off, &m, &bitmap);
+                    pen += g.advance + shaped_track(g, track);
+                }
+            }
+        }
     }
     pen
 }

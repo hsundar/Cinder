@@ -1,5 +1,18 @@
 # Cinder — status & flash/verify guide (audited 2026-07-26; delta appended 2026-08-17)
 
+> ## 2026-11-20 — Devanagari tags, shaped
+>
+> - **Devanagari in titles, artists and albums** draws correctly: conjuncts (श्च, त्त, ट्ट, ङ्ग),
+>   the ि sign before its consonant, marks placed by the font, the headline joined across each word.
+>   Sony's firmware has no Devanagari face, so Noto Sans Devanagari Regular + Bold (OFL, release
+>   v2.007) is bundled and Devanagari runs are shaped with `rustybuzz` (`cinder-ui/src/shape.rs`);
+>   text without Devanagari takes the old per-character path unchanged (all 474 existing previews
+>   pixel-identical). Truncation (`widgets::fit`) and wrapping (`track_info::wrap`) cut between
+>   whole aksharas. Devanagari is not letter-spaced, so tracked headers keep their words joined.
+>   *Device-verified on an NW-A55 (stable channel) with ID3v2.4 UTF-8 and ID3v2.3 UTF-16 tags: Sony's
+>   scanner passes both through intact.* Not done: sort order and the A–Z index (Devanagari files
+>   under `#`), search normalisation, weights other than Regular and Bold, other Indic scripts.
+
 > ## 2026-11-14 — Headphone EQ
 >
 > - **Sound ▸ Advanced ▸ Headphone EQ** (opt-in, off): AutoEQ / Equalizer APO parametric profiles

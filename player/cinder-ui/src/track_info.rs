@@ -75,15 +75,16 @@ pub(crate) fn wrap(f: &FontSet, v: &str, st: &TextStyle, w: f32) -> Vec<String> 
         let mut word = word;
         // A single fragment wider than the column: break it at the last character that fits,
         // repeatedly. Without this the loop would emit one over-wide line and draw past the edge.
-        while !fits(word) && word.chars().count() > 1 {
+        while !fits(word) && crate::shape::clusters(word).len() > 1 {
+            // Cut between clusters (see `shape::clusters`), never inside a Devanagari akshara.
             let mut cut = 0;
             let mut acc = String::new();
-            for (i, ch) in word.char_indices() {
-                acc.push(ch);
+            for piece in crate::shape::clusters(word) {
+                acc.push_str(piece);
                 if !fits(&acc) {
                     break;
                 }
-                cut = i + ch.len_utf8();
+                cut = acc.len();
             }
             if cut == 0 {
                 break; // one character does not fit — draw it anyway rather than loop forever

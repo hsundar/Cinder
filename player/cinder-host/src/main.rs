@@ -2984,6 +2984,127 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
         save(&c2, "i18n_now_playing");
     }
 
+    // Devanagari tags, shaped (`cinder_ui::shape`): the two albums the feature was written against,
+    // Vishwa Mohan Bhatt's Meghadutam (ID3v2.4, UTF-8) and Balwant Rai Bhatt's lecture series
+    // (ID3v2.3, UTF-16). What to look for: conjuncts drawn as one glyph (श्च, त्त, ट्ट, ङ्ग), the ि
+    // sign to the LEFT of its consonant (वि, दि), the headline joining under every word, and a
+    // truncated row ending on a whole syllable before the ellipsis.
+    {
+        use cinder_ui::model::{AlbumRow, ArtistGroup, ArtistRow, Library, SongRow};
+        let rows: &[(&str, &str, &str, &str)] = &[
+            (
+                "कश्चित् कान्ताविरहगुरुणा",
+                "Vishwa Mohan Bhat",
+                "मेघदूत ( कालिदास)",
+                "6:12",
+            ),
+            (
+                "जातं वंशे भुवनविदिते",
+                "Vishwa Mohan Bhat",
+                "मेघदूत ( कालिदास)",
+                "5:48",
+            ),
+            ("उज्जैन", "Vishwa Mohan Bhat", "मेघदूत ( कालिदास)", "7:03"),
+            ("राग वाक्यों का महत्त्व", "बलवन्त भट्ट", "रागो की प्रस्तुति", "24:10"),
+            ("वादी भेदे राग भेद", "बलवन्त भट्ट", "रागो की प्रस्तुति", "19:37"),
+            ("रूप एक नाम अनेक", "बलवन्त भट्ट", "रागो की प्रस्तुति", "21:05"),
+            (
+                "बन्दिषो मे राग ताल शृङ्गार - १",
+                "बलवन्त भट्ट",
+                "रागो की प्रस्तुति",
+                "18:44",
+            ),
+        ];
+        let songs: Vec<SongRow> = rows
+            .iter()
+            .enumerate()
+            .map(|(i, (t, a, al, d))| SongRow {
+                title: t.to_string(),
+                artist: a.to_string(),
+                dur: d.to_string(),
+                art: format!("deva {al}"),
+                object_id: 100 + i as i64,
+                album_id: if i < 3 { 100 } else { 101 },
+                disc: 1,
+                track: i as i32 + 1,
+                year: 2004,
+                ..Default::default()
+            })
+            .collect();
+        let album = |id: i64, name: &str, artist: &str, tracks: &[SongRow]| ArtistGroup {
+            artist: artist.to_string(),
+            albums: vec![AlbumRow {
+                cue: Vec::new(),
+                name: name.to_string(),
+                artist: artist.to_string(),
+                year: "2004".into(),
+                tracks: tracks.len() as u32,
+                art: format!("deva {name}"),
+                album_id: id,
+                added: 2026,
+                track_list: tracks.to_vec(),
+            }],
+        };
+        let album_groups = vec![
+            album(100, "मेघदूत ( कालिदास)", "Vishwa Mohan Bhat", &songs[..3]),
+            album(101, "रागो की प्रस्तुति", "बलवन्त राई भट्ट (भावरंग)", &songs[3..]),
+        ];
+        let artists = ["Vishwa Mohan Bhat", "बलवन्त राई भट्ट (भावरंग)"]
+            .iter()
+            .map(|a| ArtistRow {
+                name: a.to_string(),
+                albums: 1,
+                tracks: 4,
+                arts: vec![a.to_string()],
+                album_ids: Vec::new(),
+            })
+            .collect();
+        let deva_lib = Library {
+            songs: songs.clone(),
+            album_groups,
+            artists,
+            playlists: Vec::new(),
+            thumbs: Default::default(),
+            genres: Vec::new(),
+            ..Default::default()
+        };
+
+        let mut app = new_app();
+        app.press(Button::Up); // Menu — the cursor starts on Library
+        app.press(Button::Select);
+        app.set_library(deva_lib.clone());
+        app.press(Button::Left); // -> Songs
+        let mut c = Canvas::new();
+        app.render(&mut c, &fonts, &np);
+        save(&c, "devanagari_library_songs");
+
+        let mut app = new_app();
+        app.press(Button::Up);
+        app.press(Button::Select);
+        app.set_library(deva_lib);
+        let mut c = Canvas::new();
+        app.render(&mut c, &fonts, &np);
+        save(&c, "devanagari_library_albums");
+
+        let np_deva = now_playing::NowPlaying {
+            title: "कश्चित् कान्ताविरहगुरुणा",
+            artist: "Vishwa Mohan Bhat",
+            ..np
+        };
+        let mut c = Canvas::new();
+        now_playing::render(&mut c, &th(true, amber), &fonts, &np_deva);
+        save(&c, "devanagari_now_playing");
+
+        let np_deva2 = now_playing::NowPlaying {
+            title: "बन्दिषो मे राग ताल शृङ्गार - १",
+            artist: "बलवन्त भट्ट",
+            ..np
+        };
+        let mut c = Canvas::new();
+        now_playing::render(&mut c, &th(false, amber), &fonts, &np_deva2);
+        save(&c, "devanagari_now_playing_light");
+    }
+
     // Volume HUD over Now Playing (press Vol Up a few times).
     {
         let mut app = new_app();

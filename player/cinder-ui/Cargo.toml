@@ -12,3 +12,4 @@ dev = []
 [dependencies]
 embedded-graphics = "0.8"
 fontdue = "0.9"
+rustybuzz = "0.20"

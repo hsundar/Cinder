@@ -287,13 +287,15 @@ pub fn fit(f: &FontSet, s: &str, st: &TextStyle, max_w: f32) -> String {
     if text::measure(f, s, st) <= max_w {
         return s.to_string();
     }
+    // By cluster, not by character: one character each for most scripts, but a whole akshara in
+    // Devanagari, so the cut never leaves a vowel sign or half a conjunct before the ellipsis.
     let mut out = String::new();
-    for ch in s.chars() {
-        let trial = format!("{}{}…", out, ch);
+    for piece in crate::shape::clusters(s) {
+        let trial = format!("{out}{piece}…");
         if text::measure(f, &trial, st) > max_w {
             break;
         }
-        out.push(ch);
+        out.push_str(piece);
     }
     format!("{}…", out)
 }

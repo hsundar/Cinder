@@ -62,6 +62,7 @@ pub mod scale;
 pub mod search;
 pub mod sensme;
 pub mod settings;
+pub mod shape;
 pub mod shelf;
 pub mod shuffle;
 pub mod skin;
