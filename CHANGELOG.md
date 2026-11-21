@@ -18,6 +18,14 @@ level the commit history supports; from `v0.1.6` onward, entries are written as 
 
 ### Added
 
+- **Pivot, a large-type style** (Settings ▸ Display ▸ Style ▸ Pivot), set in Atkinson Hyperlegible
+  Next (OFL, bundled). Home is the menu as big lowercase words with what is playing on top; the
+  Library has a large "music" (or "books") heading over a strip of sections, the current one first
+  and the rest dimmed and wrapping round. A sideways swipe moves between sections (songs, albums,
+  artists, playlists, books, folders), rows are taller with one large line, and a long press on a
+  song or album is Play Next. Album, artist and playlist pages and Now Playing keep the Nocturne
+  look for now. *Device-unverified* (host tests, previews and the simulator).
+
 - **Add to Up Next from the album and artist pages.** A + button beside Shuffle (album) and the
   dice (artist) puts the whole album, or all of the artist's songs, at the end of Up Next without
   replacing what is playing.

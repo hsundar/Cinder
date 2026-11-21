@@ -4376,6 +4376,34 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
         );
         save(&c, "keyboard_more_symbols");
     }
+
+    // The Pivot style (style.rs): Home, the Library's sections and the books, in its own type.
+    // Last, like the blocks above: Atkinson Hyperlegible is a face nothing else draws.
+    {
+        use cinder_ui::library::Tab;
+        use cinder_ui::nav::Screen;
+        use cinder_ui::style::Style;
+        let mut app = new_app();
+        app.set_style(Style::Pivot);
+        for (name, tab) in [
+            ("pivot_library_songs", Tab::Songs),
+            ("pivot_library_albums", Tab::Albums),
+            ("pivot_library_artists", Tab::Artists),
+            ("pivot_library_playlists", Tab::Playlists),
+        ] {
+            app.open_library_for_test(tab);
+            let mut c = Canvas::new();
+            app.render(&mut c, &fonts, &np);
+            save(&c, name);
+        }
+        for (name, screen) in [("pivot_books", Screen::Books), ("pivot_home", Screen::Menu)] {
+            app.go_for_preview(screen);
+            let mut c = Canvas::new();
+            app.render(&mut c, &fonts, &np);
+            save(&c, name);
+        }
+        app.set_style(Style::Cinder);
+    }
 }
 
 // ── Golden pixel hashes ────────────────────────────────────────────────────────────────────────

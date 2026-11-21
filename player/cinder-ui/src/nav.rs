@@ -1956,6 +1956,8 @@ pub struct App {
     /// zones always match the labels on screen. (`render` takes `&self`, hence the interior
     /// mutability — the same render-mirrors-hit rule the lists already follow.)
     lib_tab_zones: std::cell::RefCell<Vec<(library::Slot, f32, f32)>>,
+    /// The Pivot style's section strip as last drawn (`pivot::strip_layout`), for its taps.
+    pivot_zones: std::cell::RefCell<Vec<(crate::pivot::Section, i32, i32)>>,
     /// Object ids of the Up Next rows the last render actually drew, in drawn order. The window
     /// auto-scrolls to follow playback, so the renderer (which knows `np`) publishes this for the
     /// hit test instead of `tap` trying to recompute it.
@@ -2404,6 +2406,7 @@ impl Default for App {
             scrub: Scrub::None,
             scrub_permille: 0,
             lib_tab_zones: std::cell::RefCell::new(Vec::new()),
+            pivot_zones: std::cell::RefCell::new(Vec::new()),
             up_next_cur: None,
             up_next_id: None,
             queue_follow: true,
@@ -5505,6 +5508,27 @@ impl App {
         }
 
         match self.current() {
+            Screen::Menu if self.pivot() => {
+                use crate::pivot;
+                if (pivot::home_strip_top()..pivot::home_strip_bottom()).contains(&y) {
+                    if self.stack.len() >= 2 && self.stack[self.stack.len() - 2] == Screen::NowPlaying {
+                        self.pop();
+                    } else {
+                        self.go(Screen::NowPlaying);
+                    }
+                    return vec![];
+                }
+                let y = y + self.menu_scroll();
+                if let Some(i) = pivot::home_chip_at(x, y, self.menu_len()) {
+                    self.home_screen = i as u8;
+                    return vec![];
+                }
+                if let Some(row) = pivot::home_row_at(y, self.menu_len()) {
+                    self.menu_idx = row;
+                    return self.activate_menu(row);
+                }
+                vec![]
+            }
             Screen::Menu => {
                 if crate::menu::strip_hit(y) {
                     // The strip names what is playing; tapping it goes there. Popping (rather than
@@ -5652,6 +5676,7 @@ impl App {
                 _ => vec![],
             },
             Screen::Folders => self.tap_folders(y),
+            Screen::Library | Screen::Books if self.pivot() => self.tap_pivot_library(x, y),
             Screen::Books => {
                 // The strip: another tab goes back to the Library on it, in this screen's place.
                 if !self.lib.books.is_empty() && (library::TAB_TOP..library::TAB_BOT).contains(&y) {
@@ -8613,6 +8638,9 @@ impl App {
 
     /// Largest useful library scroll for the current tab (Albums depends on ORDER + expansion).
     fn lib_max_scroll(&self) -> i32 {
+        if self.pivot() {
+            return crate::pivot::max_scroll(crate::pivot::Section::Tab(self.lib_tab), &self.lib, self.lib_sort, self.album_sort);
+        }
         library::max_scroll_px(
             self.lib_tab,
             &self.lib,
@@ -8736,7 +8764,7 @@ impl App {
                 self.display_scroll_px = (self.display_scroll() + dy_px).clamp(0, max);
             }
             Screen::Menu => {
-                let max = crate::menu::max_scroll_px(self.menu_len());
+                let max = self.menu_max_scroll();
                 self.menu_scroll_px = (self.menu_scroll() + dy_px).clamp(0, max);
             }
             Screen::BtCodec => {
@@ -8794,7 +8822,7 @@ impl App {
                 self.sensme_scroll_px = (self.sensme_scroll_px + dy_px).clamp(0, max);
             }
             Screen::Books => {
-                let max = crate::audiobooks::max_scroll_px(&self.lib);
+                let max = self.books_max_scroll();
                 self.books_scroll_px = (self.books_scroll_px + dy_px).clamp(0, max);
             }
             // The user queue drew from row 0 and stopped at the bottom of the panel, so anything
@@ -8845,9 +8873,112 @@ impl App {
     /// Now Playing's layout as it stands: this style, this mode, this song.
     /// The Menu's scroll, clamped like Display's.
     fn menu_scroll(&self) -> i32 {
-        self.menu_scroll_px
-            .min(crate::menu::max_scroll_px(self.menu_len()))
-            .max(0)
+        self.menu_scroll_px.min(self.menu_max_scroll()).max(0)
+    }
+
+    /// The Pivot style draws Home and the Library itself (`pivot.rs`).
+    fn pivot(&self) -> bool {
+        self.style == crate::style::Style::Pivot
+    }
+
+    fn menu_max_scroll(&self) -> i32 {
+        if self.pivot() {
+            crate::pivot::home_max_scroll(self.menu_len())
+        } else {
+            crate::menu::max_scroll_px(self.menu_len())
+        }
+    }
+
+    fn books_max_scroll(&self) -> i32 {
+        if self.pivot() {
+            crate::pivot::max_scroll(crate::pivot::Section::Books, &self.lib, self.lib_sort, self.album_sort)
+        } else {
+            crate::audiobooks::max_scroll_px(&self.lib)
+        }
+    }
+
+    /// The Library section on screen, as the Pivot style names it.
+    fn pivot_section(&self) -> crate::pivot::Section {
+        if self.current() == Screen::Books {
+            crate::pivot::Section::Books
+        } else {
+            crate::pivot::Section::Tab(self.lib_tab)
+        }
+    }
+
+    /// Go to a Pivot section: a list tab, the books, or the folder browser — each in the place of
+    /// the one on screen, so the strip leaves no history for Back.
+    fn pivot_go(&mut self, to: crate::pivot::Section) {
+        use crate::pivot::Section;
+        match (self.current(), to) {
+            (_, Section::Folders) => self.open_folders(),
+            (Screen::Books, Section::Tab(t)) => {
+                self.books_to_music();
+                self.show_lib_tab(t);
+            }
+            (Screen::Library, Section::Tab(t)) => self.show_lib_tab(t),
+            (Screen::Library, Section::Books) => self.library_to_books(),
+            _ => {}
+        }
+    }
+
+    /// A tap on the Pivot Library or books: the strip switches section, a row does what the same
+    /// row does in the Cinder style.
+    fn tap_pivot_library(&mut self, x: i32, y: i32) -> Vec<Action> {
+        use crate::pivot::{self, Section};
+        if (pivot::strip_top()..pivot::strip_bottom()).contains(&y) {
+            let hit = pivot::strip_hit(&self.pivot_zones.borrow(), x);
+            if let Some(sec) = hit {
+                self.pivot_go(sec);
+            }
+            return vec![];
+        }
+        let sec = self.pivot_section();
+        let scroll = if sec == Section::Books { self.books_scroll_px } else { self.lib_scroll_px };
+        let Some(row) = pivot::row_at(sec, &self.lib, self.lib_sort, self.album_sort, scroll, y) else {
+            return vec![];
+        };
+        match sec {
+            Section::Tab(Tab::Songs) => {
+                self.lib_idx = row;
+                let ids = self.songs_list_ids();
+                self.start_play_list(ids, row)
+            }
+            Section::Tab(Tab::Albums) => {
+                let Some(&flat) = library::album_display_order(&self.lib, self.album_sort).get(row) else {
+                    return vec![];
+                };
+                self.lib_idx = row;
+                self.album_view = flat;
+                self.album_track_idx = 0;
+                self.album_scroll_px = 0;
+                self.fling_v = 0.0;
+                self.push(Screen::Album);
+                vec![]
+            }
+            Section::Tab(Tab::Artists) => {
+                self.lib_idx = row;
+                self.open_artist(row);
+                vec![]
+            }
+            Section::Tab(Tab::Playlists) => {
+                self.lib_idx = row;
+                let Some(p) = self.lib.playlists.get(row) else { return vec![] };
+                if p.smart {
+                    let id = p.id;
+                    self.rebuild_smart(None);
+                    let Some(row) = self.lib.playlists.iter().position(|p| p.id == id) else {
+                        return vec![];
+                    };
+                    self.open_playlist(row);
+                } else {
+                    self.open_playlist(row);
+                }
+                vec![]
+            }
+            Section::Books => self.start_play_action(Action::PlayBook(row)),
+            Section::Folders => vec![],
+        }
     }
 
     /// Sound quality's scroll, clamped: Big view off, or a codec without the LDAC rows, leaves less
@@ -9369,10 +9500,33 @@ impl App {
         if self.locked || self.overlay_open() || self.confirm.is_some() {
             return None;
         }
+        if self.pivot() && matches!(self.current(), Screen::Library) {
+            return self.pivot_hold(y);
+        }
         if self.current() == Screen::UpNext || !self.row_swipes(y) {
             return None;
         }
         Some(self.swipe(-1, x, y))
+    }
+
+    /// A long press on a Pivot Library row: Play next — the song, or the whole album. (In this
+    /// style a sideways swipe moves between sections, so queueing lives here.)
+    fn pivot_hold(&mut self, y: i32) -> Option<Vec<Action>> {
+        use crate::pivot::{self, Section};
+        let sec = self.pivot_section();
+        let row = pivot::row_at(sec, &self.lib, self.lib_sort, self.album_sort, self.lib_scroll_px, y)?;
+        match sec {
+            Section::Tab(Tab::Songs) => {
+                let s = library::song_at(&self.lib, self.lib_sort, row)?.clone();
+                Some(self.enqueue_at(s, y, QueueAt::Next))
+            }
+            Section::Tab(Tab::Albums) => {
+                let flat = *library::album_display_order(&self.lib, self.album_sort).get(row)?;
+                let al = (*self.lib.albums_flat().get(flat)?).clone();
+                Some(self.enqueue_album_at(&al, y, QueueAt::Next))
+            }
+            _ => None,
+        }
     }
 
     /// Is there a row under `y` that a horizontal swipe acts on?
@@ -9381,6 +9535,8 @@ impl App {
         // playlist rows have nothing to queue, so they must not move — a row that slides and then
         // does nothing is worse feedback than a row that never moved.
         match self.current() {
+            // Pivot: a sideways swipe changes section, so no row slides under the finger.
+            Screen::Library | Screen::Books if self.pivot() => false,
             Screen::Library => match self.lib_tab {
                 Tab::Songs => library::hit_row_at(
                     self.lib_tab,
@@ -9636,6 +9792,7 @@ impl App {
     fn sbar_metrics(&self) -> Option<(i32, i32, i32)> {
         let lb = library::list_bottom();
         match self.current() {
+            Screen::Library if self.pivot() => Some((self.lib_max_scroll(), crate::pivot::list_top(), lb)),
             Screen::Library => Some((self.lib_max_scroll(), library::list_top(self.lib_tab), lb)),
             Screen::Album => self.lib.albums_flat().get(self.album_view).map(|al| {
                 (
@@ -9726,8 +9883,8 @@ impl App {
                 },
             )),
             Screen::Books => Some((
-                crate::audiobooks::max_scroll_px(&self.lib),
-                crate::audiobooks::TOP,
+                self.books_max_scroll(),
+                if self.pivot() { crate::pivot::list_top() } else { crate::audiobooks::TOP },
                 lb,
             )),
             _ => None,
@@ -9882,6 +10039,12 @@ impl App {
             // always meant "queue this", and which keeps meaning exactly that. Two symmetric
             // gestures need no new control and no long-press, and the toast names which one
             // happened so a mis-swipe is legible rather than silent.
+            // Pivot: a sideways swipe moves between the sections; rows queue by long-press instead.
+            Screen::Library | Screen::Books if self.pivot() => {
+                let next = crate::pivot::neighbour(&self.lib, self.pivot_section(), dir);
+                self.pivot_go(next);
+                vec![]
+            }
             Screen::Library if dir < 0 => match self.lib_tab {
                 Tab::Songs => {
                     let song = library::hit_row_at(
@@ -11722,14 +11885,36 @@ impl App {
                         icon: self.opt(Opt::MenuIcons).then(|| menu_icon(*screen)),
                     })
                     .collect();
-                crate::menu::render(
+                if self.pivot() {
+                    crate::pivot::home(c, &theme, fonts, &strip, &items, self.home_screen as usize, self.menu_scroll());
+                } else {
+                    crate::menu::render(
+                        c,
+                        &theme,
+                        fonts,
+                        &strip,
+                        &items,
+                        self.home_screen as usize,
+                        self.menu_scroll(),
+                    );
+                }
+            }
+            Screen::Library | Screen::Books if self.pivot() => {
+                let sec = self.pivot_section();
+                // Record the strip exactly as drawn, so a tap hits the names the user sees.
+                *self.pivot_zones.borrow_mut() = crate::pivot::strip_layout(fonts, &self.lib, sec);
+                let scroll = if sec == crate::pivot::Section::Books { self.books_scroll_px } else { self.lib_scroll_px };
+                crate::pivot::library(
                     c,
                     &theme,
                     fonts,
-                    &strip,
-                    &items,
-                    self.home_screen as usize,
-                    self.menu_scroll(),
+                    &self.lib,
+                    sec,
+                    self.lib_sort,
+                    self.album_sort,
+                    scroll,
+                    self.playing_object_id(),
+                    self.sbar_active(),
                 );
             }
             Screen::Library => {
@@ -23069,10 +23254,10 @@ mod tests {
             let (x, y) = chip(i);
             a.tap(x, y)
         };
-        tap(&mut a, Style::COUNT - 1);
-        assert_eq!(a.style(), Style::ALL[Style::COUNT - 1]);
+        tap(&mut a, Style::Winamp.index());
+        assert_eq!(a.style(), Style::Winamp);
         assert_eq!(
-            tap(&mut a, Style::COUNT - 1),
+            tap(&mut a, Style::Winamp.index()),
             vec![Action::ListSkins],
             "Winamp again lists the skins"
         );

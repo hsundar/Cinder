@@ -236,6 +236,11 @@ fn main() {
         lib.books = cinder_ui::model::Library::sample().books;
     }
     app.set_library(lib);
+    // `--style NAME`: start in a design style (cinder, nocturne, …, pivot).
+    let argv: Vec<String> = std::env::args().collect();
+    if let Some(st) = argv.iter().position(|a| a == "--style").and_then(|i| argv.get(i + 1)).and_then(|n| cinder_ui::style::Style::from_token(n)) {
+        app.set_style(st);
+    }
     // Something playing, so the screens that are about the playing song have one: Track
     // information's rows (with its Rating row) and a play context for the stars to rate.
     let first_album = app

@@ -1,5 +1,14 @@
 # Cinder — status & flash/verify guide (audited 2026-07-26; delta appended 2026-08-17)
 
+> ## 2026-11-21 — Pivot style — BUILT HOST-ONLY
+>
+> - **Display ▸ Style ▸ Pivot**: big type for the small screen, set in Atkinson Hyperlegible Next
+>   (Light/Regular/SemiBold, OFL, `cinder-ui/src/pivot.rs`). Home is lowercase words with a now-playing
+>   line; Library and Books share a heading and a wrapping section strip; a sideways swipe changes
+>   section, a long press on a song or album is Play Next, the left-edge swipe stays Back. Album,
+>   artist, playlist and Now Playing pages are not restyled yet. 805 cinder-ui tests, previews
+>   `pivot_*`, simulator swipes and taps. Checklist §52.
+
 > ## 2026-11-20 — Devanagari tags, shaped
 >
 > - **Devanagari in titles, artists and albums** draws correctly: conjuncts (श्च, त्त, ट्ट, ङ्ग),

@@ -49,6 +49,7 @@ pub mod opt;
 pub mod overlay;
 pub mod pairing;
 pub mod palette;
+pub mod pivot;
 pub mod palette_list;
 pub mod playlist_cover;
 pub mod playlist_edit;

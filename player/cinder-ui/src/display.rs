@@ -180,7 +180,7 @@ fn style_chips_top() -> i32 {
 }
 
 /// The styles sit three to a line: six across cut every name but "Clock" at any text size.
-const STYLE_COLS: usize = 3;
+const STYLE_COLS: usize = 4;
 
 /// Top of the style chips' line `line`.
 fn style_line_top(line: usize) -> i32 {

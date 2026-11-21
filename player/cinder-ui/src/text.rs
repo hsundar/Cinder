@@ -126,6 +126,9 @@ pub fn scaled(size: f32) -> f32 {
 pub enum Family {
     Sans,
     Mono,
+    /// Atkinson Hyperlegible Next: the Pivot style's face, drawn large. Light, Regular and
+    /// SemiBold are bundled; Bold and ExtraBold draw as SemiBold.
+    Legible,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -246,7 +249,7 @@ pub fn with_fixed_ui_glyphs<T>(draw: impl FnOnce() -> T) -> T {
 /// Every distinct bundled font, as (family, weight) pairs that `pick` maps to different files.
 /// Order matters only for looks — the first one carrying the glyph wins — so the regular weights
 /// come first and the display weights last.
-const BUNDLED_ORDER: [(Family, Weight); 7] = [
+const BUNDLED_ORDER: [(Family, Weight); 10] = [
     (Family::Sans, Weight::Regular),
     (Family::Mono, Weight::Regular),
     (Family::Sans, Weight::SemiBold),
@@ -254,6 +257,9 @@ const BUNDLED_ORDER: [(Family, Weight); 7] = [
     (Family::Mono, Weight::Bold),
     (Family::Mono, Weight::Light),
     (Family::Sans, Weight::ExtraBold),
+    (Family::Legible, Weight::Regular),
+    (Family::Legible, Weight::Light),
+    (Family::Legible, Weight::SemiBold),
 ];
 
 /// Is `ch` in a script that fallback #`i` is actually for?
@@ -311,14 +317,14 @@ enum Slot {
     Ready(&'static Font),
 }
 
-/// The bundled fonts, each parsed the first time anything needs it. Parsing all seven is 0.7 s
+/// The bundled fonts, each parsed the first time anything needs it. Parsing the first seven is 0.7 s
 /// on the player (11-17: 707 ms of the 810 ms before the first frame, with one or two cores
 /// online at boot), so [`FontSet::load`] parses them on a thread of their own and the first
 /// frame waits only for the ones it draws with.
 fn parse(b: &[u8]) -> Font {
     Font::from_bytes(b, FontSettings::default()).expect("font parse")
 }
-static BUNDLED: [LazyLock<Font>; 7] = [
+static BUNDLED: [LazyLock<Font>; 10] = [
     LazyLock::new(|| parse(include_bytes!("../assets/fonts/HankenGrotesk-Regular.ttf"))),
     LazyLock::new(|| parse(include_bytes!("../assets/fonts/HankenGrotesk-SemiBold.ttf"))),
     LazyLock::new(|| parse(include_bytes!("../assets/fonts/HankenGrotesk-Bold.ttf"))),
@@ -330,6 +336,9 @@ static BUNDLED: [LazyLock<Font>; 7] = [
     LazyLock::new(|| parse(include_bytes!("../assets/fonts/JetBrainsMono-Light.ttf"))),
     LazyLock::new(|| parse(include_bytes!("../assets/fonts/JetBrainsMono-Regular.ttf"))),
     LazyLock::new(|| parse(include_bytes!("../assets/fonts/JetBrainsMono-Bold.ttf"))),
+    LazyLock::new(|| parse(include_bytes!("../assets/fonts/AtkinsonHyperlegibleNext-Light.ttf"))),
+    LazyLock::new(|| parse(include_bytes!("../assets/fonts/AtkinsonHyperlegibleNext-Regular.ttf"))),
+    LazyLock::new(|| parse(include_bytes!("../assets/fonts/AtkinsonHyperlegibleNext-SemiBold.ttf"))),
 ];
 
 pub struct FontSet {
@@ -544,6 +553,12 @@ impl FontSet {
                 Weight::Regular | Weight::SemiBold => 5,
                 Weight::Bold | Weight::ExtraBold => 6,
             },
+            // 10.. : clear of 7 (unused), 8 (the Chinese UI subset) and 16.. (the device chain).
+            Family::Legible => match w {
+                Weight::Light => 10,
+                Weight::Regular => 11,
+                Weight::SemiBold | Weight::Bold | Weight::ExtraBold => 12,
+            },
         }
     }
 
@@ -627,6 +642,11 @@ impl FontSet {
                 Weight::Light => &BUNDLED[4],
                 Weight::Regular | Weight::SemiBold => &BUNDLED[5],
                 Weight::Bold | Weight::ExtraBold => &BUNDLED[6],
+            },
+            Family::Legible => match w {
+                Weight::Light => &BUNDLED[7],
+                Weight::Regular => &BUNDLED[8],
+                Weight::SemiBold | Weight::Bold | Weight::ExtraBold => &BUNDLED[9],
             },
         }
     }

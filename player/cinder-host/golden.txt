@@ -77,7 +77,7 @@ d864865cf194e859 clockset_day
 dae3a9a619f19e12 sound_mono_day
 67fa518626c82f57 sound_mono_live_day
 2bbcc4b655858289 settings_day
-eb4694565b559e9c display_day
+707409c0c18b3427 display_day
 03ea1ba515f2dc85 genre_picker_day
 31fe4d7f5d413121 library_songs_filtered_day
 749a673af7e55553 folders_root_day
@@ -195,7 +195,7 @@ e254651afe9d3ba1 alarm_off_night
 e4a279c7bf120b58 sound_mono_night
 ca649ef73daa09fc sound_mono_live_night
 d83cfcf99c4ce874 settings_night
-d9494ce80ba42dd8 display_night
+5357449da3430088 display_night
 9b8b6dc46560742c genre_picker_night
 825b977b29f240d0 library_songs_filtered_night
 e192746ad2ce39c6 folders_root_night
@@ -290,17 +290,17 @@ aa6dc91eb323f56c viz_below_ribbon
 a4fd719c42403594 viz_below_pulse
 b1a1d9e8972e90e7 accent_amber_now_playing
 2874ea42bc161913 status_busy
-4c5bcf8af3b87da9 accent_amber_display
+90cd7c10cff9d1c2 accent_amber_display
 6c3cb21779aa5ecb accent_crimson_now_playing
-c79a6c4a64fbdbe4 accent_crimson_display
+82121e9182d8017b accent_crimson_display
 c6786ea56b227cf7 accent_violet_now_playing
-a9bffade05eddd16 accent_violet_display
+841d6bee9c18011d accent_violet_display
 9e20c5bbe82b6acb accent_azure_now_playing
-4e8c157e649205fd accent_azure_display
+d7e2ccf27fc6fdca accent_azure_display
 c2ae4d6731bf1b8d accent_mint_now_playing
-bcc1bd634796f4fc accent_mint_display
+070a82c3388f23bb accent_mint_display
 91dc2021752157e1 accent_bone_now_playing
-d77cc0f73c1dfa34 accent_bone_display
+13d3e1f64990b7df accent_bone_display
 a41fb60d04e3c4ff nav_0_now_playing
 df268492c3380953 nav_1_menu
 df268492c3380953 nav_2_menu_library
@@ -332,7 +332,7 @@ ec2ee37a4562c0ac swipe_queue_5_132px_armed
 b889c625c124d062 swipe_play_next_5_132px_armed
 aff3e1259ee98bb1 uiscale_80_library
 2b6f20525524da59 uiscale_80_settings
-87523a1171b9dacb uiscale_80_display
+31d04f80f22323df uiscale_80_display
 42f4c8d901c29ae1 uiscale_80_bluetooth
 f6ca5877ca523093 uiscale_80_sound
 3c87ebae434cf56d uiscale_80_nowplaying
@@ -345,7 +345,7 @@ f3470d5b579cd652 uiscale_80_receiver_sbc
 69991b127e7023a1 uiscale_80_settings_bottom
 af2b39cb029a8692 uiscale_100_library
 246bba60cd6f9938 uiscale_100_settings
-26a9f686fa3ccc5f uiscale_100_display
+6bd68b7506980098 uiscale_100_display
 bcfafab607bcb2bf uiscale_100_bluetooth
 fa5c7b78b3eca06b uiscale_100_sound
 a41fb60d04e3c4ff uiscale_100_nowplaying
@@ -358,7 +358,7 @@ cb7b20e5e422bef4 uiscale_100_receiver_aac
 98d28c0b339af218 uiscale_100_settings_bottom
 44ba357099d0b39c uiscale_120_library
 b0690f165a4464a0 uiscale_120_settings
-49d082269b7215c6 uiscale_120_display
+0f24f8b2d8cac676 uiscale_120_display
 35df6552cdbdb164 uiscale_120_bluetooth
 8e89ddd0b55c3095 uiscale_120_sound
 fed8d67aa19eb907 uiscale_120_nowplaying
@@ -371,7 +371,7 @@ d5932a1e69dd3c45 uiscale_120_receiver_sbc
 4c53f9afeb9ac83c uiscale_120_settings_bottom
 f499afb544a9c471 uiscale_140_library
 3f20768c9588b8d8 uiscale_140_settings
-545058ee0b110996 uiscale_140_display
+2cb60cd1fc0efcd5 uiscale_140_display
 55125d08abf8894f uiscale_140_bluetooth
 96ecbce41a3235a0 uiscale_140_sound
 76adc276859e1d4e uiscale_140_nowplaying
@@ -449,7 +449,7 @@ d3e06ac58447e44a big_now_playing
 5efaf4e9f7bb875a big_library
 f547a2ccb145b94a big_settings
 ec0eab030b91661d big_menu_end
-baba52f064fdcd72 big_display_end
+0913ff7e2075df65 big_display_end
 4765ce8171d21d43 big_bluetooth
 0adc31b87635ce45 big_sound_quality
 ec055c092d494391 usbdac_low_latency
@@ -458,7 +458,7 @@ a14db615067d72f6 big_extras_settings
 7bcfd59b37c5159d big_extras_library
 4063e4a1ea5f62ae now_playing_back_count
 d855fd6196a717d5 now_playing_tint
-770f7a1616a1178d display_night_auto
+ea6d18181d7f19eb display_night_auto
 c6bf06fd52c636a1 usb_storage
 5bd059d8d8a7fda6 usb_storage_big
 20bfb8b3a769e2f7 usb_storage_140
@@ -480,3 +480,9 @@ d772b66e6d59b788 media_servers
 b786054cd19da9d3 wifi_options
 fc8b35ce8b081cf7 wifi_failed
 3f1438ac0f9dc5b3 keyboard_more_symbols
+d969576732dc7fb4 pivot_library_songs
+e40be5e50b385caa pivot_library_albums
+4509c1d645b31848 pivot_library_artists
+c4f22220239981c9 pivot_library_playlists
+7d5496ba6ff04fd0 pivot_books
+00df5e49c17c99e5 pivot_home

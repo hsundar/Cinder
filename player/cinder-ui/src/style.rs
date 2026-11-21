@@ -35,16 +35,22 @@ pub enum Style {
     Clock,
     /// A classic Winamp skin (`.wsz`) from the top of the drive. Terminal's geometry.
     Winamp,
+    /// Type first, for the small screen: huge lowercase headings that run off the edge, sections
+    /// you swipe between (songs · albums · artists …) with the next one in view at the edge, one
+    /// large line per item, almost no chrome. Set in Atkinson Hyperlegible Next. Redraws Home and
+    /// the Library (`pivot.rs`); Now Playing uses Nocturne's geometry for now.
+    Pivot,
 }
 
 impl Style {
-    pub const ALL: [Style; 6] = [
+    pub const ALL: [Style; 7] = [
         Style::Cinder,
         Style::Nocturne,
         Style::Terminal,
         Style::Cassette,
         Style::Clock,
         Style::Winamp,
+        Style::Pivot,
     ];
     pub const COUNT: usize = Self::ALL.len();
 
@@ -57,6 +63,7 @@ impl Style {
             Style::Cassette => "Cassette",
             Style::Clock => "Clock",
             Style::Winamp => "Winamp",
+            Style::Pivot => "Pivot",
         }
     }
 
@@ -69,6 +76,7 @@ impl Style {
             Style::Cassette => "cassette",
             Style::Clock => "clock",
             Style::Winamp => "winamp",
+            Style::Pivot => "pivot",
         }
     }
 
@@ -95,6 +103,7 @@ impl Style {
             Style::Cassette => crate::i18n::text("A tape: reels wind as it plays"),
             Style::Clock => crate::i18n::text("A large clock in place of the cover"),
             Style::Winamp => crate::i18n::text("A Winamp skin (.wsz); tap again for the next"),
+            Style::Pivot => crate::i18n::text("Big type, swipe between sections"),
         }
     }
 }

@@ -1205,6 +1205,17 @@ times are from power-on.
 | 51.36 | Album page + button, artist page + button (with and without music playing) | Open. Album/artist songs go to the end of Up Next with a toast; nothing that is playing changes |
 | 51.37 | 3.5 mm volume: hold speed and how soon the sound follows | Open. Measured 11-19: the mixer moves 14–50 ms after a press (screen on or off), so the lag is not the key path. Owner: holding is slow (350 ms before the ramp, then 1 step per 120 ms for 1.5 s) and the sound takes a moment to follow; next is a capture-rig recording of a held press |
 
+
+## 52 — 2026-11-21 — Pivot style
+
+| # | Test | Result |
+|---|---|---|
+| 52.1 | Settings ▸ Display ▸ Style ▸ Pivot; Home shows big lowercase words, tapping one opens it, the top line opens Now Playing | Open |
+| 52.2 | Library: swipe left/right moves through songs, albums, artists, playlists (books, folders) and wraps; tapping a section name jumps there | Open |
+| 52.3 | Long press on a song, then an album: Play Next toast, Up Next shows them next | Open |
+| 52.4 | Left-edge swipe still goes Back from the Library; vertical scrolling and the scrollbar still work | Open |
+| 52.5 | Devanagari titles in Pivot rows draw with the Noto fallback | Open |
+
 **Decision for the owner.** Cinder's first frame waits 2.4–3.5 s for Sony's app framework
 (`onActivate`). Drawing could start about 2.8 s sooner, but Cinder's settings are on `/contents`,
 which may not be readable that early, so the first frame could show the default theme and volume
