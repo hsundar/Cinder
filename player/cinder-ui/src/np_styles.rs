@@ -44,6 +44,7 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying) {
         Style::Terminal => terminal_render(c, t, f, np, &l),
         Style::Cassette => cassette_render(c, t, f, np, &l),
         Style::Winamp => winamp_render(c, t, f, np, &l),
+        Style::Pivot => pivot_render(c, t, f, np, &l),
         _ => nocturne_render(c, t, f, np, &l),
     }
     if np.lyrics {
@@ -524,6 +525,169 @@ fn toolbar_word(c: &mut Canvas, f: &FontSet, cx: f32, baseline: f32, word: &str,
     let w = text::measure(f, &word, st);
     let x0 = (cx - w / 2.0).clamp(22.0, (crate::canvas::W as f32 - 22.0 - w).max(22.0));
     text::draw(c, f, x0, baseline, &word, st);
+}
+
+// ── Pivot ─────────────────────────────────────────────────────────────────────────────────────
+//
+// Nocturne's targets, drawn the Pivot way (`pivot.rs`): the artist huge and light across the top of
+// the page block, running off the edge, the cover under it, the title in Atkinson Hyperlegible
+// Next, and the toolbar as lowercase words. Every control is where Nocturne's layout puts it.
+
+fn pivot_render(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying, l: &Layout) {
+    use noc::*;
+    let leg = |w: Weight, size: f32, col: Rgb888| s(Family::Legible, w, size, col, 0.0);
+    c.fill(t.bg);
+    let quiet = idle(np);
+    let left = crate::pivot::LEFT;
+    // The page block: the artist above a cover that fills the rest of it.
+    let name_base = ART_Y as f32 + text::scaled(50.0);
+    let art_y = name_base as i32 + 18;
+    let art = ART_Y + ART - art_y;
+    if quiet {
+        nothing_playing(c, t, f, 240.0, (ART_Y + ART / 2) as f32, false);
+    } else {
+        c.bleed_x();
+        text::draw(
+            c,
+            f,
+            left - 2.0,
+            name_base,
+            np.artist,
+            &leg(Weight::Light, 52.0, t.ink),
+        );
+        c.clear_clip_x();
+        let x = left as i32;
+        if np::page_from_index(np.page) == NpPage::Cover {
+            cover(c, t, np, x, art_y, art);
+            cover_viz(c, t, np, x + 12, art - 24, art_y + art - 8);
+        } else {
+            audio_page(c, t, f, np, (x, art_y, art, art));
+        }
+        // The page dots stand in the room right of the cover, from its foot up.
+        for i in 0..np::PAGES as i32 {
+            let on = i == (np.page % np::PAGES) as i32;
+            fill_rect(
+                c,
+                x + art + 14,
+                art_y + art - 12 - i * 12,
+                2,
+                if on { 10 } else { 4 },
+                if on { t.acc } else { t.faint },
+            );
+        }
+    }
+
+    // The title, and what it is under it (the artist is the heading).
+    if !quiet {
+        widgets::marquee(
+            c,
+            f,
+            TEXT_X - 18.0,
+            TITLE_Y,
+            np.title,
+            &leg(Weight::Regular, 30.0, t.ink),
+            TEXT_W + 18.0,
+        );
+        let cs = leg(Weight::Regular, 16.0, t.dim);
+        text::draw(
+            c,
+            f,
+            TEXT_X - 18.0,
+            ARTIST_Y,
+            &widgets::fit(f, np.codec, &cs, TEXT_W + 18.0),
+            &cs,
+        );
+        let (hx, hy) = centre(l, Hit::Like);
+        icons::heart(c, hx, hy, 24.0, if np.liked { t.acc } else { t.faint });
+    }
+
+    // The rail and the times.
+    let r = l.rail;
+    fill_rect(c, r.x0, r.y, r.w, r.h, t.line);
+    if !quiet {
+        let fw = (r.w as f32 * np.progress.clamp(0.0, 1.0)) as i32;
+        fill_rect(c, r.x0, r.y, fw, r.h, t.acc);
+        let knob = if np.scrubbing { 18 } else { 10 };
+        fill_rect(c, r.x0 + fw - 1, r.y + r.h / 2 - knob / 2, 2, knob, t.acc);
+        let ts = leg(Weight::Regular, 15.0, t.dim);
+        text::draw(c, f, r.x0 as f32, TIMES_Y, np.elapsed, &ts);
+        widgets::right(
+            c,
+            f,
+            (r.x0 + r.w) as f32,
+            TIMES_Y,
+            np.remaining,
+            &TextStyle {
+                color: t.faint,
+                ..ts
+            },
+        );
+    }
+
+    // The transport: plain glyphs, Play in a thin ring of ink.
+    let side = if quiet { t.faint } else { t.ink };
+    let (px, py) = centre(l, Hit::PlayPause);
+    let ring = np::g(33.0).min(38.0) as i32;
+    for (rad, col) in [(ring, side), (ring - 2, t.bg)] {
+        Circle::with_center(Point::new(px as i32, py as i32), (rad * 2) as u32)
+            .into_styled(PrimitiveStyle::with_fill(col))
+            .draw(c)
+            .ok();
+    }
+    if np.playing && !quiet {
+        icons::pause(c, px, py, np::g(26.0), side);
+    } else {
+        icons::play(c, px + 2.0, py, np::g(26.0), side);
+    }
+    let (x, y) = centre(l, Hit::Prev);
+    icons::prev(c, x, y, np::g(28.0), side);
+    let (x, y) = centre(l, Hit::Next);
+    icons::next(c, x, y, np::g(28.0), side);
+    let (x, y) = centre(l, Hit::Shuffle);
+    icons::shuffle(
+        c,
+        x,
+        y,
+        np::g(20.0),
+        if np.shuffle && !quiet { t.acc } else { t.faint },
+    );
+    let (x, y) = centre(l, Hit::Repeat);
+    icons::repeat(
+        c,
+        x,
+        y,
+        np::g(20.0),
+        if np.repeat > 0 && !quiet {
+            t.acc
+        } else {
+            t.faint
+        },
+    );
+    if !quiet && np.repeat == 1 {
+        fill_rect(c, x as i32 - 1, y as i32 - 1, 3, 3, t.acc);
+    } else if !quiet && np.repeat == np::REPEAT_ALBUM {
+        widgets::center(
+            c,
+            f,
+            x,
+            y + 24.0,
+            crate::i18n::text("album"),
+            &leg(Weight::SemiBold, 13.0, t.acc),
+        );
+    }
+
+    // The toolbar: four lowercase words, no rule.
+    for (i, word) in TOOLBAR_WORDS.iter().enumerate() {
+        let word = if i == 2 {
+            crate::now_playing::button().label()
+        } else {
+            crate::i18n::text(word)
+        };
+        let word = word.to_lowercase();
+        let (x, _) = centre(l, Hit::Toolbar(i as u8));
+        let col = if quiet && i == 0 { t.acc } else { t.dim };
+        toolbar_word(c, f, x, 784.0, &word, &leg(Weight::Regular, 18.0, col));
+    }
 }
 
 // ── Terminal ──────────────────────────────────────────────────────────────────────────────────

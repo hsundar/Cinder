@@ -432,6 +432,15 @@ pub struct BookRow {
     pub finished: bool,
 }
 
+/// The `YYYY-MM-DD` a file name starts with, if it does.
+fn episode_date(path: &str) -> Option<&str> {
+    let name = path.rsplit('/').next()?;
+    let d = name.get(..10)?;
+    let b = d.as_bytes();
+    let ok = b.iter().enumerate().all(|(i, c)| if i == 4 || i == 7 { *c == b'-' } else { c.is_ascii_digit() });
+    ok.then_some(d)
+}
+
 impl BookRow {
     /// The title as the list shows it: a book in a series is led by its number (`3. Title`).
     pub fn list_title(&self) -> String {
@@ -440,6 +449,21 @@ impl BookRow {
         } else {
             format!("{}. {}", self.series_part, self.title)
         }
+    }
+
+    /// Is it a podcast show rather than a book? A folder in `LEARNING/Podcasts/`, or one whose
+    /// every file is named from a date (`2026-11-03 Title.mp3`, the way episodes are downloaded),
+    /// so shows copied straight into `LEARNING` before there was a Podcasts folder count too.
+    pub fn is_podcast(&self) -> bool {
+        if self.author.eq_ignore_ascii_case("podcasts") {
+            return true;
+        }
+        !self.paths.is_empty() && self.paths.iter().all(|p| episode_date(p).is_some())
+    }
+
+    /// A chapter's date, when its file name starts with one (`YYYY-MM-DD`).
+    pub fn chapter_date(&self, i: usize) -> Option<&str> {
+        self.paths.get(i).and_then(|p| episode_date(p))
     }
 
     /// Has the listener started it (and not finished)?
@@ -861,6 +885,21 @@ impl Library {
                 ..Default::default()
             },
         ];
+        let mut sample_books = sample_books;
+        // A podcast show, the way baaja copies one: dated episodes in `LEARNING/Podcasts/<show>`.
+        sample_books.push(BookRow {
+            title: "Night Signals".into(),
+            author: "Podcasts".into(),
+            dir: "/contents/LEARNING/Podcasts/Night Signals".into(),
+            chapters: songs.iter().skip(1).take(4).cloned().collect(),
+            paths: ["2026-10-27", "2026-11-03", "2026-11-10", "2026-11-17"]
+                .iter()
+                .map(|d| format!("/contents/LEARNING/Podcasts/Night Signals/{d} Episode.mp3"))
+                .collect(),
+            chapter: 2,
+            pos_ms: 600_000,
+            ..Default::default()
+        });
         let mut lib = Library {
             songs,
             album_groups,

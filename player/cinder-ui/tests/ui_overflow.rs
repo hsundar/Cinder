@@ -899,3 +899,41 @@ fn every_style_stays_on_the_panel_with_its_text_apart() {
         bad.join("\n  ")
     );
 }
+
+/// The Pivot style's own screens (`pivot.rs`), at every UI scale, against the hostile library:
+/// nothing past the margin except the headings and strips, which run off it on purpose
+/// (`Canvas::bleed_x`), and no text into other text.
+#[test]
+fn pivot_screens_stay_on_the_panel_with_their_text_apart() {
+    use cinder_ui::library::Tab;
+    let fonts = FontSet::load();
+    let np = np_plain();
+    let mut bad: Vec<String> = Vec::new();
+    for idx in 0..cinder_ui::text::SCALE_STEPS.len() {
+        let _g = scale_lock(idx);
+        let pct = cinder_ui::text::SCALE_STEPS[idx];
+        let mut cases: Vec<(String, App)> = Vec::new();
+        for tab in [Tab::Songs, Tab::Albums, Tab::Artists, Tab::Playlists] {
+            let mut a = at(Screen::Library);
+            a.set_style(cinder_ui::style::Style::Pivot);
+            a.open_library_for_test(tab);
+            cases.push((format!("Library {tab:?}"), a));
+        }
+        for s in [Screen::Menu, Screen::Books, Screen::Album, Screen::Artist, Screen::Playlist, Screen::Show] {
+            let mut a = at(s);
+            a.set_style(cinder_ui::style::Style::Pivot);
+            cases.push((format!("{s:?}"), a));
+        }
+        for (what, mut a) in cases {
+            let n = overflow_of(&mut a, &fonts, &np);
+            if n > 0 {
+                bad.push(format!("{what} @ {pct}%: {n} px past the margin"));
+            }
+            for (x, y, px) in collisions_of(&mut a, &fonts, &np) {
+                bad.push(format!("{what} @ {pct}%: {x:?} × {y:?} ({px} px)"));
+            }
+        }
+    }
+    let _restore = scale_lock(cinder_ui::text::SCALE_DEFAULT_IDX);
+    assert!(bad.is_empty(), "Pivot screens overflow ({}):\n  {}", bad.len(), bad.join("\n  "));
+}

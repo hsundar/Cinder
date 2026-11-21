@@ -1215,6 +1215,10 @@ times are from power-on.
 | 52.3 | Long press on a song, then an album: Play Next toast, Up Next shows them next | Open |
 | 52.4 | Left-edge swipe still goes Back from the Library; vertical scrolling and the scrollbar still work | Open |
 | 52.5 | Devanagari titles in Pivot rows draw with the Noto fallback | Open |
+| 52.6 | Album, artist and playlist pages: the action words (play, shuffle, add…), a track tap, a long press (Play Next); on an artist, swipe between albums and songs | Open |
+| 52.7 | Now Playing in Pivot: every control answers where it is drawn; the page swipe on the cover still turns pages | Open |
+| 52.8 | Connect to baaja: shows sent before move into `LEARNING/Podcasts`, and their place in `cinder_books.tsv` survives (the show resumes at the same episode and time) | Open |
+| 52.9 | Pivot ▸ podcasts: a show lists its episodes newest first with new / min in / heard; tap one plays it; "newest" and "continue" | Open |
 
 **Decision for the owner.** Cinder's first frame waits 2.4–3.5 s for Sony's app framework
 (`onActivate`). Drawing could start about 2.8 s sooner, but Cinder's settings are on `/contents`,

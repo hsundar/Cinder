@@ -4402,6 +4402,35 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
             app.render(&mut c, &fonts, &np);
             save(&c, name);
         }
+        // The podcasts beside the books, and a show's episodes.
+        app.go_for_preview(Screen::Books);
+        app.swipe(-1, 300, 500);
+        let mut c = Canvas::new();
+        app.render(&mut c, &fonts, &np);
+        save(&c, "pivot_podcasts");
+        app.tap(60, cinder_ui::pivot::list_top() + 10);
+        let mut c = Canvas::new();
+        app.render(&mut c, &fonts, &np);
+        save(&c, "pivot_show");
+        // The pages a row opens: an album, an artist (albums, then songs), a playlist.
+        let row0 = cinder_ui::pivot::list_top() + 10;
+        for (name, tab) in [("pivot_album", Tab::Albums), ("pivot_artist", Tab::Artists), ("pivot_playlist", Tab::Playlists)] {
+            app.open_library_for_test(tab);
+            app.tap(60, row0);
+            let mut c = Canvas::new();
+            app.render(&mut c, &fonts, &np);
+            save(&c, name);
+            if tab == Tab::Artists {
+                app.swipe(-1, 300, 500);
+                let mut c = Canvas::new();
+                app.render(&mut c, &fonts, &np);
+                save(&c, "pivot_artist_songs");
+            }
+        }
+        app.go_for_preview(Screen::NowPlaying);
+        let mut c = Canvas::new();
+        app.render(&mut c, &fonts, &np);
+        save(&c, "pivot_now_playing");
         app.set_style(Style::Cinder);
     }
 }

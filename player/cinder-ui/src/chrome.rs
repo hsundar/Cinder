@@ -350,7 +350,9 @@ pub fn np_bar(
     progress: f32,
 ) {
     let (x, y, w, h) = np_bar_rect();
-    fill_rect(c, x, y, w, h, t.panel);
+    // Pivot: no panel and no caption, the words in its own face (`pivot.rs`).
+    let pivot = t.style == crate::style::Style::Pivot;
+    fill_rect(c, x, y, w, h, if pivot { t.bg } else { t.panel });
     fill_rect(c, x, y, w, 1, t.line);
     // Live progress along the bar's top edge. Two pixels, no labels: it costs nothing, and it makes
     // the strip read as the running track rather than a static label — you can see at a glance that
@@ -374,22 +376,32 @@ pub fn np_bar(
     fill_rect(c, NP_BAR_PLAY_W, y + 14, 1, h - 28, t.line);
 
     let cap = sty(Family::Mono, Weight::Regular, 11.0, t.faint, 0.16);
-    let cap_w = text::measure(f, crate::i18n::text("NOW PLAYING"), &cap);
-    text::draw(
-        c,
-        f,
-        (crate::W as f32) - 34.0 - cap_w,
-        (y + 26) as f32,
-        crate::i18n::text("NOW PLAYING"),
-        &cap,
-    );
+    let cap_w = if pivot {
+        0.0
+    } else {
+        text::measure(f, crate::i18n::text("NOW PLAYING"), &cap)
+    };
+    if !pivot {
+        text::draw(
+            c,
+            f,
+            (crate::W as f32) - 34.0 - cap_w,
+            (y + 26) as f32,
+            crate::i18n::text("NOW PLAYING"),
+            &cap,
+        );
+    }
     // Chevron pointing UP, under the caption: says "this opens something" rather than leaving the
     // bar looking like a passive label. Without it the strip reads as status, not as a target.
     icons::chevron_up(c, (crate::W as f32) - 20.0, (y + 46) as f32, 12.0, t.faint);
 
     // Title + artist, clamped so they never run under the caption.
     let avail = (crate::W as f32) - 88.0 - cap_w - 34.0;
-    let ts = sty(Family::Sans, Weight::Bold, 17.0, t.ink, -0.01);
+    let ts = if pivot {
+        sty(Family::Legible, Weight::Regular, 19.0, t.ink, 0.0)
+    } else {
+        sty(Family::Sans, Weight::Bold, 17.0, t.ink, -0.01)
+    };
     let title = if title.is_empty() {
         crate::i18n::text("Nothing playing")
     } else {
@@ -398,7 +410,13 @@ pub fn np_bar(
     let title = crate::widgets::fit(f, title, &ts, avail);
     text::draw(c, f, 90.0, (y + 28) as f32, &title, &ts);
     if !artist.is_empty() {
-        let asty = sty(Family::Sans, Weight::Regular, 13.0, t.dim, 0.0);
+        let asty = sty(
+            if pivot { Family::Legible } else { Family::Sans },
+            Weight::Regular,
+            if pivot { 15.0 } else { 13.0 },
+            t.dim,
+            0.0,
+        );
         let artist = crate::widgets::fit(f, artist, &asty, avail);
         text::draw(c, f, 90.0, (y + 48) as f32, &artist, &asty);
     }

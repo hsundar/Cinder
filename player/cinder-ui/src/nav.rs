@@ -163,6 +163,9 @@ pub enum Screen {
     /// the Library's own strip. Tapping a row plays the book from where the listener left it. See
     /// `audiobooks.rs`.
     Books,
+    /// One podcast show's episodes, newest first (Pivot style: `pivot::show`). A show is a book
+    /// that `BookRow::is_podcast` says is one; `show_view` is its index in `Library::books`.
+    Show,
     /// Track information — Sony's "Detailed Information". Pushed by tapping the title/artist/codec
     /// block on Now Playing, which is where the eye already is when the question comes up.
     TrackInfo,
@@ -502,6 +505,10 @@ pub enum Action {
     /// saved chapter at its saved position, or the first chapter for a book not started or
     /// finished. The shell owns the place, so the message is only which book.
     PlayBook(usize),
+    /// Play one podcast episode: chapter `chapter` of `Library::books[book]`, from where the
+    /// listener left it when that is the episode they were in, else from its start. The episodes
+    /// after it follow, as a book's chapters do.
+    PlayEpisode { book: usize, chapter: u32 },
     /// Shuffle one playlist by DB id. Same channel as `PlayPlaylist`, but shuffled — the page's
     /// band needs it and `ShuffleScope::Playlist` picks a RANDOM playlist, which is a different
     /// thing entirely.
@@ -1958,6 +1965,9 @@ pub struct App {
     lib_tab_zones: std::cell::RefCell<Vec<(library::Slot, f32, f32)>>,
     /// The Pivot style's section strip as last drawn (`pivot::strip_layout`), for its taps.
     pivot_zones: std::cell::RefCell<Vec<(crate::pivot::Section, i32, i32)>>,
+    /// A Pivot page's action words and (on the artist page) its strip, as last drawn.
+    pivot_actions: std::cell::RefCell<Vec<crate::pivot::ActionZone>>,
+    pivot_words: std::cell::RefCell<Vec<(usize, i32, i32)>>,
     /// Object ids of the Up Next rows the last render actually drew, in drawn order. The window
     /// auto-scrolls to follow playback, so the renderer (which knows `np`) publishes this for the
     /// hit test instead of `tap` trying to recompute it.
@@ -1989,6 +1999,11 @@ pub struct App {
     sensme_scroll_px: i32,
     /// Scroll of the Audiobooks list.
     books_scroll_px: i32,
+    /// Pivot: the Books screen shows the podcast shows rather than the books.
+    pivot_podcasts: bool,
+    /// The podcast show open on `Screen::Show` (index into `Library::books`), and its scroll.
+    show_view: usize,
+    show_scroll_px: i32,
     /// The channel LIST's scroll, kept while a channel is open so Back puts the channel you went
     /// into back under your finger — the folder tree's `folder_scroll_saved`, for one level.
     sensme_scroll_saved: i32,
@@ -2407,6 +2422,8 @@ impl Default for App {
             scrub_permille: 0,
             lib_tab_zones: std::cell::RefCell::new(Vec::new()),
             pivot_zones: std::cell::RefCell::new(Vec::new()),
+            pivot_actions: std::cell::RefCell::new(Vec::new()),
+            pivot_words: std::cell::RefCell::new(Vec::new()),
             up_next_cur: None,
             up_next_id: None,
             queue_follow: true,
@@ -2421,6 +2438,9 @@ impl Default for App {
             sensme_channel: None,
             sensme_scroll_px: 0,
             books_scroll_px: 0,
+            pivot_podcasts: false,
+            show_view: 0,
+            show_scroll_px: 0,
             sensme_scroll_saved: 0,
             sensme_enabled: false,
             preview_enabled: false,
@@ -5511,7 +5531,9 @@ impl App {
             Screen::Menu if self.pivot() => {
                 use crate::pivot;
                 if (pivot::home_strip_top()..pivot::home_strip_bottom()).contains(&y) {
-                    if self.stack.len() >= 2 && self.stack[self.stack.len() - 2] == Screen::NowPlaying {
+                    if self.stack.len() >= 2
+                        && self.stack[self.stack.len() - 2] == Screen::NowPlaying
+                    {
                         self.pop();
                     } else {
                         self.go(Screen::NowPlaying);
@@ -5694,6 +5716,10 @@ impl App {
             }
             Screen::SensMe => self.tap_sensme(x, y),
             Screen::Library => self.tap_library(x, y),
+            Screen::Album if self.pivot() => self.tap_pivot_album(x, y),
+            Screen::Show => self.tap_show(x, y),
+            Screen::Artist if self.pivot() => self.tap_pivot_artist(x, y),
+            Screen::Playlist if self.pivot() => self.tap_pivot_playlist(x, y),
             Screen::Album => {
                 // track rows via the render-mirroring hit test (rows start 312 @56 —
                 // library::album_view geometry; the Play-album band above returns None).
@@ -8639,7 +8665,12 @@ impl App {
     /// Largest useful library scroll for the current tab (Albums depends on ORDER + expansion).
     fn lib_max_scroll(&self) -> i32 {
         if self.pivot() {
-            return crate::pivot::max_scroll(crate::pivot::Section::Tab(self.lib_tab), &self.lib, self.lib_sort, self.album_sort);
+            return crate::pivot::max_scroll(
+                crate::pivot::Section::Tab(self.lib_tab),
+                &self.lib,
+                self.lib_sort,
+                self.album_sort,
+            );
         }
         library::max_scroll_px(
             self.lib_tab,
@@ -8686,21 +8717,17 @@ impl App {
                 );
             }
             Screen::Album => {
-                if let Some(al) = self.lib.albums_flat().get(self.album_view) {
-                    let max = library::album_max_scroll_px(al);
+                if let Some(max) = self.album_max_scroll() {
                     self.album_scroll_px = (self.album_scroll_px + dy_px).clamp(0, max);
                 }
             }
             Screen::Artist => {
-                if let Some(max) = self
-                    .artist_page()
-                    .map(|p| library::artist_max_scroll_px(&p))
-                {
+                if let Some(max) = self.artist_max_scroll() {
                     self.artist_scroll_px = (self.artist_scroll_px + dy_px).clamp(0, max);
                 }
             }
             Screen::Playlist => {
-                if let Some(max) = self.playlist_row().map(library::playlist_max_scroll_px) {
+                if let Some(max) = self.playlist_max_scroll() {
                     self.playlist_scroll_px = (self.playlist_scroll_px + dy_px).clamp(0, max);
                 }
             }
@@ -8825,6 +8852,12 @@ impl App {
                 let max = self.books_max_scroll();
                 self.books_scroll_px = (self.books_scroll_px + dy_px).clamp(0, max);
             }
+            Screen::Show => {
+                if let Some(b) = self.lib.books.get(self.show_view) {
+                    let max = crate::pivot::show_max_scroll(b);
+                    self.show_scroll_px = (self.show_scroll_px + dy_px).clamp(0, max);
+                }
+            }
             // The user queue drew from row 0 and stopped at the bottom of the panel, so anything
             // past ~10 tracks was unreachable — and unreorderable with it.
             Screen::UpNext => {
@@ -8857,6 +8890,7 @@ impl App {
                 | Screen::UpNext
                 | Screen::SensMe
                 | Screen::Books
+                | Screen::Show
         ) {
             self.fling_v = velocity_px_s.clamp(-8000.0, 8000.0);
         }
@@ -8891,7 +8925,12 @@ impl App {
 
     fn books_max_scroll(&self) -> i32 {
         if self.pivot() {
-            crate::pivot::max_scroll(crate::pivot::Section::Books, &self.lib, self.lib_sort, self.album_sort)
+            crate::pivot::max_scroll(
+                self.pivot_section(),
+                &self.lib,
+                self.lib_sort,
+                self.album_sort,
+            )
         } else {
             crate::audiobooks::max_scroll_px(&self.lib)
         }
@@ -8900,7 +8939,11 @@ impl App {
     /// The Library section on screen, as the Pivot style names it.
     fn pivot_section(&self) -> crate::pivot::Section {
         if self.current() == Screen::Books {
-            crate::pivot::Section::Books
+            if self.pivot_podcasts {
+                crate::pivot::Section::Podcasts
+            } else {
+                crate::pivot::Section::Books
+            }
         } else {
             crate::pivot::Section::Tab(self.lib_tab)
         }
@@ -8917,8 +8960,260 @@ impl App {
                 self.show_lib_tab(t);
             }
             (Screen::Library, Section::Tab(t)) => self.show_lib_tab(t),
-            (Screen::Library, Section::Books) => self.library_to_books(),
+            (Screen::Library, Section::Books | Section::Podcasts) => {
+                self.library_to_books();
+                self.pivot_podcasts = to == Section::Podcasts;
+            }
+            (Screen::Books, Section::Books | Section::Podcasts) => {
+                self.pivot_podcasts = to == Section::Podcasts;
+                self.books_scroll_px = 0;
+                self.fling_v = 0.0;
+            }
             _ => {}
+        }
+    }
+
+    /// How far the album, artist and playlist pages scroll, in the style on screen.
+    fn album_max_scroll(&self) -> Option<i32> {
+        let al = self.lib.albums_flat().get(self.album_view).copied()?;
+        Some(if self.pivot() {
+            crate::pivot::album_max_scroll(al, self.opt(Opt::DeleteMusic))
+        } else {
+            library::album_max_scroll_px(al)
+        })
+    }
+    fn artist_max_scroll(&self) -> Option<i32> {
+        let p = self.artist_page()?;
+        Some(if self.pivot() {
+            crate::pivot::artist_max_scroll(&p)
+        } else {
+            library::artist_max_scroll_px(&p)
+        })
+    }
+    fn playlist_max_scroll(&self) -> Option<i32> {
+        let p = self.playlist_row()?;
+        Some(if self.pivot() {
+            crate::pivot::playlist_max_scroll(p)
+        } else {
+            library::playlist_max_scroll_px(p)
+        })
+    }
+
+    /// The Pivot artist page's section: its songs (`true`) or its albums, from the top.
+    fn pivot_artist_show(&mut self, songs: bool) {
+        if self.artist_songs_open != songs {
+            self.artist_songs_open = songs;
+            self.artist_scroll_px = 0;
+            self.fling_v = 0.0;
+        }
+    }
+
+    /// A tap on the Pivot album page: an action word, or a track (which plays the album from it).
+    fn tap_pivot_album(&mut self, x: i32, y: i32) -> Vec<Action> {
+        let Some(album) = self
+            .lib
+            .albums_flat()
+            .get(self.album_view)
+            .map(|a| (*a).clone())
+        else {
+            return vec![];
+        };
+        let del = self.opt(Opt::DeleteMusic);
+        if let Some(row) = crate::pivot::album_row_at(&album, del, self.album_scroll_px, y) {
+            self.album_track_idx = row;
+            return self.play_album_row(&album, row);
+        }
+        let hit = crate::pivot::action_hit(&self.pivot_actions.borrow(), x, y);
+        match hit {
+            // Play: from track 1, the shell's album context plays the rest in order.
+            Some(0) => {
+                self.album_track_idx = 0;
+                let id = album.track_list.first().map(|s| s.object_id);
+                id.map(|i| self.start_play(i)).unwrap_or_default()
+            }
+            Some(1) => {
+                let ids: Vec<i64> = album.track_list.iter().map(|s| s.object_id).collect();
+                if ids.is_empty() {
+                    return vec![];
+                }
+                self.play_list = ids;
+                self.list_shuffle_by = crate::shuffle::ShuffleBy::Songs;
+                self.start_play_action(Action::ShuffleList)
+            }
+            Some(2) => self.enqueue_album_at(&album, y, QueueAt::Later),
+            Some(3) if del => {
+                let ids = album.track_list.iter().map(|s| s.object_id).collect();
+                self.ask_delete(ids, true);
+                vec![]
+            }
+            _ => vec![],
+        }
+    }
+
+    /// A tap on the Pivot artist page: its strip, an action word, an album (opens it) or a song
+    /// (plays the artist's songs from it).
+    fn tap_pivot_artist(&mut self, x: i32, y: i32) -> Vec<Action> {
+        use crate::pivot;
+        let albums = self.artist_page().map_or(0, |p| p.albums.len());
+        if (pivot::strip_top()..pivot::strip_bottom()).contains(&y) {
+            let hit = pivot::words_hit(&self.pivot_words.borrow(), x);
+            if let Some(i) = hit.filter(|_| albums > 0) {
+                self.pivot_artist_show(i == 1);
+            }
+            return vec![];
+        }
+        let hit = pivot::action_hit(&self.pivot_actions.borrow(), x, y);
+        if let Some(i) = hit {
+            let word = pivot::artist_actions(albums)[i];
+            if word == crate::i18n::text("shuffle") {
+                return self.start_play_action(Action::ShuffleArtist(self.artist_view));
+            }
+            if word == crate::i18n::text("any album") {
+                return self.play_random_album();
+            }
+            let Some((name, rows)) = self.artist_page().map(|p| {
+                (
+                    p.name.to_string(),
+                    p.tracks
+                        .iter()
+                        .map(|t| t.song.clone())
+                        .collect::<Vec<SongRow>>(),
+                )
+            }) else {
+                return vec![];
+            };
+            if rows.is_empty() {
+                return vec![];
+            }
+            self.notify_format("Added to Up Next — {}", vec![("0", name)]);
+            self.queue_anim_y = y;
+            self.queue_anim_frames = QUEUE_ANIM_FRAMES;
+            return self.insert_rows(rows, QueueAt::Later);
+        }
+        let got = self.artist_page().and_then(|p| {
+            let i = pivot::artist_row_at(&p, self.artist_scroll_px, y)?;
+            if pivot::artist_on_songs(&p) {
+                Some((true, i))
+            } else {
+                p.albums.get(i).map(|(flat, _)| (false, *flat))
+            }
+        });
+        match got {
+            Some((true, i)) => {
+                self.artist_track_idx = i;
+                let ids = self.artist_list_ids();
+                self.start_play_list(ids, i)
+            }
+            Some((false, flat)) => {
+                self.album_view = flat;
+                self.album_track_idx = 0;
+                self.album_scroll_px = 0;
+                self.fling_v = 0.0;
+                self.push(Screen::Album);
+                vec![]
+            }
+            None => vec![],
+        }
+    }
+
+    /// A tap on the Pivot playlist page: an action word, the cover (to pick a picture, on a list
+    /// Cinder owns), or a song.
+    fn tap_pivot_playlist(&mut self, x: i32, y: i32) -> Vec<Action> {
+        use crate::pivot::{self, PlaylistDo};
+        let Some((id, user, smart, acts)) = self
+            .playlist_row()
+            .map(|p| (p.id, p.user, p.smart, pivot::playlist_actions(p)))
+        else {
+            return vec![];
+        };
+        let row = self
+            .playlist_row()
+            .and_then(|p| pivot::playlist_row_at(p, self.playlist_scroll_px, y));
+        if let Some(i) = row {
+            self.playlist_track_idx = i;
+            if smart {
+                let ids = self.playlist_ids(self.playlist_view);
+                return self.start_play_list(ids, i);
+            }
+            return self.start_play_action(Action::PlayPlaylistAt(id, i as u32));
+        }
+        if user && pivot::hit_cover(x, y) {
+            self.open_cover_pick();
+            return vec![];
+        }
+        let hit = pivot::action_hit(&self.pivot_actions.borrow(), x, y);
+        let Some(what) = hit.and_then(|i| acts.get(i)).map(|a| a.0) else {
+            return vec![];
+        };
+        match what {
+            PlaylistDo::Play if smart => {
+                self.playlist_track_idx = 0;
+                let ids = self.playlist_ids(self.playlist_view);
+                self.start_play_list(ids, 0)
+            }
+            PlaylistDo::Play => {
+                self.playlist_track_idx = 0;
+                self.start_play_action(Action::PlayPlaylist(id))
+            }
+            PlaylistDo::Shuffle if smart => {
+                let ids = self.playlist_ids(self.playlist_view);
+                if ids.is_empty() {
+                    return vec![];
+                }
+                self.play_list = ids;
+                self.list_shuffle_by = self
+                    .views
+                    .iter()
+                    .find(|v| v.id() == id)
+                    .and_then(|v| v.shuffle)
+                    .unwrap_or(self.shuffle_by);
+                self.start_play_action(Action::ShuffleList)
+            }
+            PlaylistDo::Shuffle => self.start_play_action(Action::ShufflePlaylist(id)),
+            PlaylistDo::Edit if smart => {
+                let at = self.views.iter().position(|v| v.id() == id);
+                if at.is_some() {
+                    self.open_view_edit(at);
+                }
+                vec![]
+            }
+            PlaylistDo::Edit => {
+                self.open_playlist_edit();
+                vec![]
+            }
+            PlaylistDo::AddSongs => {
+                self.open_track_pick();
+                vec![]
+            }
+            PlaylistDo::Rename => {
+                self.open_keyboard(KbPurpose::Rename(id));
+                vec![]
+            }
+            PlaylistDo::Delete => {
+                self.confirm = Some(crate::confirm::Ask::DeletePlaylist);
+                vec![]
+            }
+        }
+    }
+
+    /// A tap on a podcast show: an episode plays from where it was left (or its start); "newest"
+    /// plays the latest; "continue" carries on where the listener is, as a book does.
+    fn tap_show(&mut self, x: i32, y: i32) -> Vec<Action> {
+        let book = self.show_view;
+        let Some(b) = self.lib.books.get(book) else {
+            return vec![];
+        };
+        if let Some(i) = crate::pivot::show_row_at(b, self.show_scroll_px, y) {
+            return self.start_play_action(Action::PlayEpisode { book, chapter: i as u32 });
+        }
+        let last = b.chapters.len().saturating_sub(1) as u32;
+        let hit = crate::pivot::action_hit(&self.pivot_actions.borrow(), x, y);
+        match hit {
+            Some(0) if !b.chapters.is_empty() => {
+                self.start_play_action(Action::PlayEpisode { book, chapter: last })
+            }
+            Some(1) => self.start_play_action(Action::PlayBook(book)),
+            _ => vec![],
         }
     }
 
@@ -8934,8 +9229,13 @@ impl App {
             return vec![];
         }
         let sec = self.pivot_section();
-        let scroll = if sec == Section::Books { self.books_scroll_px } else { self.lib_scroll_px };
-        let Some(row) = pivot::row_at(sec, &self.lib, self.lib_sort, self.album_sort, scroll, y) else {
+        let scroll = if matches!(sec, Section::Books | Section::Podcasts) {
+            self.books_scroll_px
+        } else {
+            self.lib_scroll_px
+        };
+        let Some(row) = pivot::row_at(sec, &self.lib, self.lib_sort, self.album_sort, scroll, y)
+        else {
             return vec![];
         };
         match sec {
@@ -8945,7 +9245,8 @@ impl App {
                 self.start_play_list(ids, row)
             }
             Section::Tab(Tab::Albums) => {
-                let Some(&flat) = library::album_display_order(&self.lib, self.album_sort).get(row) else {
+                let Some(&flat) = library::album_display_order(&self.lib, self.album_sort).get(row)
+                else {
                     return vec![];
                 };
                 self.lib_idx = row;
@@ -8963,7 +9264,9 @@ impl App {
             }
             Section::Tab(Tab::Playlists) => {
                 self.lib_idx = row;
-                let Some(p) = self.lib.playlists.get(row) else { return vec![] };
+                let Some(p) = self.lib.playlists.get(row) else {
+                    return vec![];
+                };
                 if p.smart {
                     let id = p.id;
                     self.rebuild_smart(None);
@@ -8976,7 +9279,19 @@ impl App {
                 }
                 vec![]
             }
-            Section::Books => self.start_play_action(Action::PlayBook(row)),
+            Section::Books => match pivot::shelf(&self.lib, false).get(row) {
+                Some(&i) => self.start_play_action(Action::PlayBook(i)),
+                None => vec![],
+            },
+            Section::Podcasts => {
+                if let Some(&i) = pivot::shelf(&self.lib, true).get(row) {
+                    self.show_view = i;
+                    self.show_scroll_px = 0;
+                    self.fling_v = 0.0;
+                    self.push(Screen::Show);
+                }
+                vec![]
+            }
             Section::Folders => vec![],
         }
     }
@@ -9500,7 +9815,12 @@ impl App {
         if self.locked || self.overlay_open() || self.confirm.is_some() {
             return None;
         }
-        if self.pivot() && matches!(self.current(), Screen::Library) {
+        if self.pivot()
+            && matches!(
+                self.current(),
+                Screen::Library | Screen::Album | Screen::Artist | Screen::Playlist
+            )
+        {
             return self.pivot_hold(y);
         }
         if self.current() == Screen::UpNext || !self.row_swipes(y) {
@@ -9513,8 +9833,53 @@ impl App {
     /// style a sideways swipe moves between sections, so queueing lives here.)
     fn pivot_hold(&mut self, y: i32) -> Option<Vec<Action>> {
         use crate::pivot::{self, Section};
+        match self.current() {
+            Screen::Album => {
+                let al = (*self.lib.albums_flat().get(self.album_view)?).clone();
+                let row =
+                    pivot::album_row_at(&al, self.opt(Opt::DeleteMusic), self.album_scroll_px, y)?;
+                let s = al.row_file(row)?.0.clone();
+                return Some(self.enqueue_at(s, y, QueueAt::Next));
+            }
+            Screen::Playlist => {
+                let s = {
+                    let pl = self.playlist_row()?;
+                    pl.track_list
+                        .get(pivot::playlist_row_at(pl, self.playlist_scroll_px, y)?)?
+                        .clone()
+                };
+                return Some(self.enqueue_at(s, y, QueueAt::Next));
+            }
+            Screen::Artist => {
+                enum Got {
+                    Song(SongRow),
+                    Album(AlbumRow),
+                }
+                let got = {
+                    let p = self.artist_page()?;
+                    let i = pivot::artist_row_at(&p, self.artist_scroll_px, y)?;
+                    if pivot::artist_on_songs(&p) {
+                        Got::Song(p.tracks.get(i)?.song.clone())
+                    } else {
+                        Got::Album(p.albums.get(i)?.1.clone())
+                    }
+                };
+                return Some(match got {
+                    Got::Song(s) => self.enqueue_at(s, y, QueueAt::Next),
+                    Got::Album(a) => self.enqueue_album_at(&a, y, QueueAt::Next),
+                });
+            }
+            _ => {}
+        }
         let sec = self.pivot_section();
-        let row = pivot::row_at(sec, &self.lib, self.lib_sort, self.album_sort, self.lib_scroll_px, y)?;
+        let row = pivot::row_at(
+            sec,
+            &self.lib,
+            self.lib_sort,
+            self.album_sort,
+            self.lib_scroll_px,
+            y,
+        )?;
         match sec {
             Section::Tab(Tab::Songs) => {
                 let s = library::song_at(&self.lib, self.lib_sort, row)?.clone();
@@ -9536,7 +9901,16 @@ impl App {
         // does nothing is worse feedback than a row that never moved.
         match self.current() {
             // Pivot: a sideways swipe changes section, so no row slides under the finger.
-            Screen::Library | Screen::Books if self.pivot() => false,
+            Screen::Library
+            | Screen::Books
+            | Screen::Album
+            | Screen::Artist
+            | Screen::Playlist
+            | Screen::Show
+                if self.pivot() =>
+            {
+                false
+            }
             Screen::Library => match self.lib_tab {
                 Tab::Songs => library::hit_row_at(
                     self.lib_tab,
@@ -9792,8 +10166,34 @@ impl App {
     fn sbar_metrics(&self) -> Option<(i32, i32, i32)> {
         let lb = library::list_bottom();
         match self.current() {
-            Screen::Library if self.pivot() => Some((self.lib_max_scroll(), crate::pivot::list_top(), lb)),
+            Screen::Library if self.pivot() => {
+                Some((self.lib_max_scroll(), crate::pivot::list_top(), lb))
+            }
             Screen::Library => Some((self.lib_max_scroll(), library::list_top(self.lib_tab), lb)),
+            Screen::Album if self.pivot() => {
+                self.lib.albums_flat().get(self.album_view).map(|al| {
+                    let del = self.opt(Opt::DeleteMusic);
+                    (
+                        crate::pivot::album_max_scroll(al, del),
+                        crate::pivot::album_list_top(del),
+                        lb,
+                    )
+                })
+            }
+            Screen::Artist if self.pivot() => self.artist_page().map(|p| {
+                (
+                    crate::pivot::artist_max_scroll(&p),
+                    crate::pivot::artist_list_top(p.albums.len()),
+                    lb,
+                )
+            }),
+            Screen::Playlist if self.pivot() => self.playlist_row().map(|p| {
+                (
+                    crate::pivot::playlist_max_scroll(p),
+                    crate::pivot::playlist_list_top(p),
+                    lb,
+                )
+            }),
             Screen::Album => self.lib.albums_flat().get(self.album_view).map(|al| {
                 (
                     library::album_max_scroll_px(al),
@@ -9882,9 +10282,18 @@ impl App {
                     lb
                 },
             )),
+            Screen::Show => self
+                .lib
+                .books
+                .get(self.show_view)
+                .map(|b| (crate::pivot::show_max_scroll(b), crate::pivot::show_list_top(), lb)),
             Screen::Books => Some((
                 self.books_max_scroll(),
-                if self.pivot() { crate::pivot::list_top() } else { crate::audiobooks::TOP },
+                if self.pivot() {
+                    crate::pivot::list_top()
+                } else {
+                    crate::audiobooks::TOP
+                },
                 lb,
             )),
             _ => None,
@@ -9932,6 +10341,7 @@ impl App {
             Screen::Folders => self.folder_scroll_px,
             Screen::SensMe => self.sensme_scroll_px,
             Screen::Books => self.books_scroll_px,
+            Screen::Show => self.show_scroll_px,
             Screen::PlaylistPick => self.pick_scroll_px,
             Screen::PlaylistCover => self.cover_scroll_px,
             Screen::TrackPick => self.track_pick_scroll_px,
@@ -10045,6 +10455,14 @@ impl App {
                 self.pivot_go(next);
                 vec![]
             }
+            // The artist page's two sections, the same way; the album and playlist pages have one.
+            Screen::Artist if self.pivot() => {
+                if self.artist_page().is_some_and(|p| !p.albums.is_empty()) {
+                    self.pivot_artist_show(!self.artist_songs_open);
+                }
+                vec![]
+            }
+            Screen::Album | Screen::Playlist | Screen::Show if self.pivot() => vec![],
             Screen::Library if dir < 0 => match self.lib_tab {
                 Tab::Songs => {
                     let song = library::hit_row_at(
@@ -10763,6 +11181,7 @@ impl App {
                 | Screen::Folders
                 | Screen::SensMe
                 | Screen::Books
+                | Screen::Show
         )
     }
 
@@ -11886,7 +12305,15 @@ impl App {
                     })
                     .collect();
                 if self.pivot() {
-                    crate::pivot::home(c, &theme, fonts, &strip, &items, self.home_screen as usize, self.menu_scroll());
+                    crate::pivot::home(
+                        c,
+                        &theme,
+                        fonts,
+                        &strip,
+                        &items,
+                        self.home_screen as usize,
+                        self.menu_scroll(),
+                    );
                 } else {
                     crate::menu::render(
                         c,
@@ -11899,11 +12326,40 @@ impl App {
                     );
                 }
             }
+            Screen::Show if self.lib.books.get(self.show_view).is_some() => {
+                let zones = crate::pivot::show(
+                    c,
+                    &theme,
+                    fonts,
+                    &self.lib.books[self.show_view],
+                    self.show_scroll_px,
+                    self.playing_object_id(),
+                    self.sbar_active(),
+                );
+                *self.pivot_actions.borrow_mut() = zones;
+            }
+            // The library reloaded under the page: its list instead of a page that is not there.
+            Screen::Show => crate::pivot::library(
+                c,
+                &theme,
+                fonts,
+                &self.lib,
+                crate::pivot::Section::Podcasts,
+                self.lib_sort,
+                self.album_sort,
+                0,
+                None,
+                false,
+            ),
             Screen::Library | Screen::Books if self.pivot() => {
                 let sec = self.pivot_section();
                 // Record the strip exactly as drawn, so a tap hits the names the user sees.
                 *self.pivot_zones.borrow_mut() = crate::pivot::strip_layout(fonts, &self.lib, sec);
-                let scroll = if sec == crate::pivot::Section::Books { self.books_scroll_px } else { self.lib_scroll_px };
+                let scroll = if matches!(sec, crate::pivot::Section::Books | crate::pivot::Section::Podcasts) {
+                    self.books_scroll_px
+                } else {
+                    self.lib_scroll_px
+                };
                 crate::pivot::library(
                     c,
                     &theme,
@@ -11919,8 +12375,11 @@ impl App {
             }
             Screen::Library => {
                 // Record the tab strip exactly as drawn, so `tap` hits the labels the user sees.
-                *self.lib_tab_zones.borrow_mut() =
-                    crate::library::tab_layout(fonts, self.lib.folders_tab, !self.lib.books.is_empty());
+                *self.lib_tab_zones.borrow_mut() = crate::library::tab_layout(
+                    fonts,
+                    self.lib.folders_tab,
+                    !self.lib.books.is_empty(),
+                );
                 crate::library::render(
                     c,
                     &theme,
@@ -11947,6 +12406,56 @@ impl App {
                     self.lib_sort,
                     self.album_sort,
                 );
+            }
+            Screen::Album
+                if self.pivot() && self.lib.albums_flat().get(self.album_view).is_some() =>
+            {
+                let flat = self.lib.albums_flat();
+                let al = flat[self.album_view];
+                let zones = crate::pivot::album(
+                    c,
+                    &theme,
+                    fonts,
+                    al,
+                    self.album_playing_row(al),
+                    self.album_scroll_px,
+                    self.album_cover.as_ref(),
+                    self.opt(Opt::DeleteMusic),
+                    self.sbar_active(),
+                );
+                *self.pivot_actions.borrow_mut() = zones;
+            }
+            Screen::Playlist if self.pivot() && self.playlist_row().is_some() => {
+                let pl = self.playlist_row().expect("checked");
+                let playing = self
+                    .playing_object_id()
+                    .and_then(|id| pl.track_list.iter().position(|s| s.object_id == id));
+                let zones = crate::pivot::playlist(
+                    c,
+                    &theme,
+                    fonts,
+                    &self.lib,
+                    pl,
+                    self.playlist_scroll_px,
+                    playing,
+                    self.sbar_active(),
+                );
+                *self.pivot_actions.borrow_mut() = zones;
+            }
+            Screen::Artist if self.pivot() && self.artist_page().is_some() => {
+                let page = self.artist_page().expect("checked");
+                let (words, zones) = crate::pivot::artist(
+                    c,
+                    &theme,
+                    fonts,
+                    &self.lib,
+                    &page,
+                    self.artist_scroll_px,
+                    self.playing_object_id(),
+                    self.sbar_active(),
+                );
+                *self.pivot_words.borrow_mut() = words;
+                *self.pivot_actions.borrow_mut() = zones;
             }
             Screen::Album => {
                 let flat = self.lib.albums_flat();
@@ -12083,15 +12592,18 @@ impl App {
             ),
             Screen::Books => {
                 // The Library's strip is drawn here too (BOOKS is its tab): record it the same way.
-                *self.lib_tab_zones.borrow_mut() =
-                    crate::library::tab_layout(fonts, self.lib.folders_tab, !self.lib.books.is_empty());
+                *self.lib_tab_zones.borrow_mut() = crate::library::tab_layout(
+                    fonts,
+                    self.lib.folders_tab,
+                    !self.lib.books.is_empty(),
+                );
                 crate::audiobooks::render(
-                c,
-                &theme,
-                fonts,
-                &self.lib,
-                self.books_scroll_px,
-                self.sbar_active(),
+                    c,
+                    &theme,
+                    fonts,
+                    &self.lib,
+                    self.books_scroll_px,
+                    self.sbar_active(),
                 )
             }
             Screen::SensMe => crate::sensme::render(
@@ -20095,6 +20607,10 @@ mod tests {
         }
     }
 
+    pub(super) fn bare_np_for_tests() -> NowPlaying<'static> {
+        bare_np()
+    }
+
     fn bare_np() -> NowPlaying<'static> {
         NowPlaying {
             skin: None,
@@ -20151,7 +20667,11 @@ mod tests {
             a.set_library(books_lib(3));
             a.push_for_test(Screen::Library);
             a.lib_tab = Tab::Songs;
-            assert_eq!(tap_slot(&mut a, library::Slot::Books), vec![], "opening a list plays nothing");
+            assert_eq!(
+                tap_slot(&mut a, library::Slot::Books),
+                vec![],
+                "opening a list plays nothing"
+            );
             assert_eq!(a.current(), Screen::Books, "search {search}");
             tap_slot(&mut a, library::Slot::Books);
             assert_eq!(a.current(), Screen::Books, "BOOKS on the Books list stays");
@@ -20210,8 +20730,16 @@ mod tests {
         let mut a = unlocked();
         a.set_library(books_lib(0));
         a.push_for_test(Screen::Library);
-        a.render(&mut Canvas::new(), &crate::text::FontSet::load(), &bare_np());
-        assert!(!a.lib_tab_zones.borrow().iter().any(|z| z.0 == library::Slot::Books));
+        a.render(
+            &mut Canvas::new(),
+            &crate::text::FontSet::load(),
+            &bare_np(),
+        );
+        assert!(!a
+            .lib_tab_zones
+            .borrow()
+            .iter()
+            .any(|z| z.0 == library::Slot::Books));
         assert_eq!(a.lib_tab_zones.borrow().len(), 4);
     }
 
@@ -20397,7 +20925,11 @@ mod tests {
         };
         let lib = strip(Screen::Library, 3);
         assert_ne!(lib, strip(Screen::Library, 0), "the Library gains BOOKS");
-        assert_ne!(lib, strip(Screen::Books, 3), "a different tab is underlined");
+        assert_ne!(
+            lib,
+            strip(Screen::Books, 3),
+            "a different tab is underlined"
+        );
     }
 
     /// A tap on a row asks the shell to play THAT book.
@@ -26909,7 +27441,10 @@ mod tests {
         let fonts = FontSet::load();
         a.render(&mut Canvas::new(), &fonts, &bare_np());
         assert!(
-            !a.lib_tab_zones.borrow().iter().any(|z| z.0 == library::Slot::Folders),
+            !a.lib_tab_zones
+                .borrow()
+                .iter()
+                .any(|z| z.0 == library::Slot::Folders),
             "off: no FOLDERS in the strip"
         );
 
@@ -28657,5 +29192,83 @@ mod r4_tests {
         a.confirm = None;
         a.set_wifi_status("state=on\n", "");
         assert!(!a.update_offered(), "no link, no row");
+    }
+
+    // ── The Pivot style's pages (`pivot.rs`) ──────────────────────────────────────────────────
+
+    fn pivot_app() -> App {
+        let mut a = App::unlocked();
+        a.set_style(crate::style::Style::Pivot);
+        a
+    }
+
+    /// Draw the screen (the action words are placed when drawn), then tap action `i` on it.
+    fn tap_action(a: &mut App, i: usize) -> Vec<Action> {
+        let fonts = crate::text::FontSet::load();
+        a.render(&mut Canvas::new(), &fonts, &super::tests::bare_np_for_tests());
+        let (_, x0, y0, x1, y1) = *a.pivot_actions.borrow().iter().find(|z| z.0 == i).expect("that action is drawn");
+        a.tap((x0 + x1) / 2, (y0 + y1) / 2)
+    }
+
+    #[test]
+    fn a_pivot_album_page_plays_queues_and_takes_a_long_press() {
+        let mut a = pivot_app();
+        a.open_library_for_test(Tab::Albums);
+        a.tap(60, crate::pivot::list_top() + 10);
+        assert_eq!(a.current(), Screen::Album);
+        assert!(!tap_action(&mut a, 0).is_empty(), "play");
+        let before = a.queue_anim_frames;
+        let _ = tap_action(&mut a, 2);
+        assert!(a.queue_anim_frames > 0 || before > 0, "add queues the album");
+        let y = crate::pivot::album_list_top(false) + 10;
+        assert!(a.hold(200, y).is_some_and(|v| !v.is_empty()), "a long press on a track is Play next");
+        assert!(a.swipe(-1, 300, y).is_empty(), "a sideways swipe does not queue in Pivot");
+        assert_eq!(a.current(), Screen::Album);
+    }
+
+    #[test]
+    fn a_pivot_artist_page_swipes_between_albums_and_songs() {
+        let mut a = pivot_app();
+        a.open_library_for_test(Tab::Artists);
+        a.tap(60, crate::pivot::list_top() + 10);
+        assert_eq!(a.current(), Screen::Artist);
+        assert!(!a.artist_songs_open, "it opens on the albums");
+        a.swipe(-1, 300, 500);
+        assert!(a.artist_songs_open, "a swipe shows the songs");
+        a.swipe(-1, 300, 500);
+        assert!(!a.artist_songs_open, "and back");
+        // An album row opens the album.
+        let y = crate::pivot::artist_list_top(a.artist_page().unwrap().albums.len()) + 10;
+        a.tap(200, y);
+        assert_eq!(a.current(), Screen::Album);
+    }
+
+    #[test]
+    fn pivot_keeps_podcasts_apart_from_books() {
+        let mut a = pivot_app();
+        let shows = crate::pivot::shelf(&a.lib, true);
+        assert_eq!(shows.len(), 1, "the sample has one show");
+        assert!(crate::pivot::shelf(&a.lib, false).iter().all(|&i| !a.lib.books[i].is_podcast()));
+        let secs = crate::pivot::sections(&a.lib);
+        assert!(secs.contains(&crate::pivot::Section::Books) && secs.contains(&crate::pivot::Section::Podcasts));
+
+        a.open_library_for_test(Tab::Songs);
+        a.pivot_go(crate::pivot::Section::Podcasts);
+        assert_eq!((a.current(), a.pivot_section()), (Screen::Books, crate::pivot::Section::Podcasts));
+        a.tap(60, crate::pivot::list_top() + 10);
+        assert_eq!((a.current(), a.show_view), (Screen::Show, shows[0]));
+        let last = a.lib.books[shows[0]].chapters.len() as u32 - 1;
+        // The rows run newest first, so the top row is the last episode.
+        assert_eq!(
+            a.tap(60, crate::pivot::show_list_top() + 10),
+            vec![Action::PlayEpisode { book: shows[0], chapter: last }]
+        );
+        assert_eq!(tap_action(&mut a, 0), vec![Action::PlayEpisode { book: shows[0], chapter: last }], "newest");
+        assert_eq!(tap_action(&mut a, 1), vec![Action::PlayBook(shows[0])], "continue");
+        // A book row in the books section plays that book, not the row's index.
+        a.pop();
+        a.pivot_go(crate::pivot::Section::Books);
+        let first_book = crate::pivot::shelf(&a.lib, false)[0];
+        assert_eq!(a.tap(60, crate::pivot::list_top() + 10), vec![Action::PlayBook(first_book)]);
     }
 }

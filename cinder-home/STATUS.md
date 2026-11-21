@@ -6,8 +6,15 @@
 >   (Light/Regular/SemiBold, OFL, `cinder-ui/src/pivot.rs`). Home is lowercase words with a now-playing
 >   line; Library and Books share a heading and a wrapping section strip; a sideways swipe changes
 >   section, a long press on a song or album is Play Next, the left-edge swipe stays Back. Album,
->   artist, playlist and Now Playing pages are not restyled yet. 805 cinder-ui tests, previews
->   `pivot_*`, simulator swipes and taps. Checklist §52.
+>   artist (swipes between albums and songs) and playlist pages, Now Playing (Nocturne's targets)
+>   and the mini player are Pivot too. Pivot screens are in `tests/ui_overflow.rs` at every scale;
+>   headings and strips run off the edge through `Canvas::bleed_x`. Simulator: swipes, pages,
+>   action words, episodes. Checklist §52. Still in the Cinder look: Up Next, Settings and the rest.
+> - **Podcasts**: `BookRow::is_podcast` (a `LEARNING/Podcasts/<show>` folder, or every file named
+>   `YYYY-MM-DD …`). Pivot lists shows in their own section and opens one to its episodes newest
+>   first; `Action::PlayEpisode { book, chapter }` plays one, resuming only the episode the saved
+>   place is in. baaja now sends shows to `LEARNING/Podcasts/<show>` and moves ones it sent to
+>   `LEARNING/<show>` there when the Walkman connects, rewriting their line in `cinder_books.tsv`.
 
 > ## 2026-11-20 — Devanagari tags, shaped
 >

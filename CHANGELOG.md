@@ -23,8 +23,17 @@ level the commit history supports; from `v0.1.6` onward, entries are written as 
   Library has a large "music" (or "books") heading over a strip of sections, the current one first
   and the rest dimmed and wrapping round. A sideways swipe moves between sections (songs, albums,
   artists, playlists, books, folders), rows are taller with one large line, and a long press on a
-  song or album is Play Next. Album, artist and playlist pages and Now Playing keep the Nocturne
-  look for now. *Device-unverified* (host tests, previews and the simulator).
+  song or album is Play Next. The album, artist and playlist pages are Pivot pages too (the
+  artist page swipes between its albums and its songs), with their actions as words (play,
+  shuffle, add); Now Playing puts the artist huge over the cover; the mini player drops its panel.
+  *Device-unverified* (host tests, previews and the simulator).
+
+- **Podcasts apart from audiobooks.** A folder in `LEARNING/Podcasts/`, or one whose files are all
+  named from a date (`2026-11-03 Title.mp3`), is a podcast show. In Pivot, shows have their own
+  "podcasts" section beside "books", and a show opens to its episodes newest first, each marked
+  new, part-heard or heard; tapping one plays it (`PlayEpisode`), "newest" plays the latest and
+  "continue" carries on as a book does. The Cinder style's BOOKS tab lists shows under
+  "Podcasts". *Device-unverified.*
 
 - **Add to Up Next from the album and artist pages.** A + button beside Shuffle (album) and the
   dice (artist) puts the whole album, or all of the artist's songs, at the end of Up Next without

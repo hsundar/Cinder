@@ -1951,7 +1951,7 @@ fn record_book_pos(r: &mut Render) {
         // The list's label follows, but a redraw is only owed when that list is on screen.
         let r_books = &r.books;
         r_books.apply(&mut r.app.library_mut().books);
-        if r.app.current() == cinder_ui::nav::Screen::Books {
+        if matches!(r.app.current(), cinder_ui::nav::Screen::Books | cinder_ui::nav::Screen::Show) {
             r.dirty = true;
         }
     }
@@ -2877,7 +2877,7 @@ static PANIC_TRACK: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64:
 
 /// Screen names for the panic line, indexed by `screen_ord`. Static strings only — the hook
 /// allocates nothing it does not have to.
-const SCREEN_NAMES: [&str; 60] = [
+const SCREEN_NAMES: [&str; 61] = [
     "Lock",
     "NowPlaying",
     "Menu",
@@ -2940,6 +2940,7 @@ const SCREEN_NAMES: [&str; 60] = [
     "MediaServers",
     "Alarm",
     "PlaylistCover",
+    "Show",
 ];
 
 /// Exhaustive on purpose: adding a `Screen` variant without a name here fails the build rather
@@ -3006,6 +3007,7 @@ fn screen_ord(s: cinder_ui::nav::Screen) -> u8 {
         S::MediaServers => 57,
         S::Alarm => 58,
         S::PlaylistCover => 59,
+        S::Show => 60,
     }
 }
 
@@ -6279,7 +6281,10 @@ fn carry_action(r: &mut Render, a: &cinder_ui::nav::Action) -> Option<libc::c_in
         }
         if matches!(
             a,
-            Action::PlayBook(..) | Action::PlaySensMe { .. } | Action::ZappinStart(_)
+            Action::PlayBook(..)
+                | Action::PlayEpisode { .. }
+                | Action::PlaySensMe { .. }
+                | Action::ZappinStart(_)
         ) {
             cast::stop();
             r.cast_was_on = false;
@@ -6567,6 +6572,45 @@ fn carry_action_now(r: &mut Render, a: &cinder_ui::nav::Action) -> Option<libc::
                     return None;
                 }
             }
+        }
+        Action::PlayEpisode { book, chapter } => {
+            // A podcast episode: the show is the context, as a book is, from the chosen episode.
+            // It resumes where the listener left it only when that is the episode they were in.
+            let Some(b) = r.app.library().books.get(*book).cloned() else {
+                eprintln!("cinder-ffi: PlayEpisode({book}): no such show — ignored");
+                return None;
+            };
+            let Some(seq) = book_tracks(r.db.as_ref(), &b) else {
+                eprintln!("cinder-ffi: PlayEpisode({}): nothing playable in it", b.title);
+                return None;
+            };
+            let files: Vec<String> = seq.iter().map(|t| t.filename.clone()).collect();
+            let Some(start) = b
+                .paths
+                .get(*chapter as usize)
+                .and_then(|want| files.iter().position(|f| f == want))
+            else {
+                eprintln!("cinder-ffi: PlayEpisode({}, {chapter}): not on the card", b.title);
+                return None;
+            };
+            let (at, pos, finished) = r.books.place(&b.dir, &b.paths);
+            let pos = if at == *chapter as usize && !finished { pos } else { 0 };
+            r.book_seek_ms = pos;
+            r.book_hold = (pos > 0).then(|| (files[start].clone(), pos, std::time::Instant::now()));
+            if loop_off(&mut r.np) {
+                r.album_lap_staged = false;
+                save_settings(r);
+            }
+            play_in_order(r);
+            set_pending(r, seq, start);
+            eprintln!(
+                "cinder-ffi: PlayEpisode({}): episode {} of {} at {} ms",
+                b.title,
+                start + 1,
+                files.len(),
+                pos
+            );
+            8
         }
         Action::PlaySensMe {
             chan,
@@ -12922,6 +12966,7 @@ mod tests {
             S::MediaServers,
             S::Alarm,
             S::PlaylistCover,
+            S::Show,
         ];
         // One ordinal (42) is spare — see SCREEN_NAMES.
         const RESERVED: usize = 1;

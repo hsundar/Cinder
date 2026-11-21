@@ -27,6 +27,10 @@ pub struct Canvas {
     /// the string — a partially visible glyph has no substring.
     clip_x0: i32,
     clip_x1: i32,
+    /// Text set to run off the side of the panel on purpose (the Pivot style's headings and
+    /// strips, whose cut-off end says "there is more this way"): rejections are not overflow, as
+    /// inside a narrowed band. Set by [`Canvas::bleed_x`], cleared by `clear_clip_x`.
+    bleed: bool,
     /// Horizontal translation applied to EVERY pixel write, in px. Zero for normal drawing; set
     /// while a swiped list row is drawn so the whole row — text, separators, cover art, icons —
     /// moves as one piece. Doing it here rather than threading an offset through each draw call
@@ -105,6 +109,7 @@ impl Canvas {
             clip_bot: H as i32,
             clip_x0: 0,
             clip_x1: W as i32,
+            bleed: false,
             off_x: 0,
             oob_x: 0,
             oob_y: 0,
@@ -149,6 +154,14 @@ impl Canvas {
     pub fn clear_clip_x(&mut self) {
         self.clip_x0 = 0;
         self.clip_x1 = W as i32;
+        self.bleed = false;
+    }
+
+    /// Draw across the whole width, letting what follows run off the side on purpose. Pair with
+    /// `clear_clip_x`. Only for designs that cut words at the edge deliberately (see `bleed`).
+    pub fn bleed_x(&mut self) {
+        self.clear_clip_x();
+        self.bleed = true;
     }
 
     pub fn fill(&mut self, c: Rgb888) {
@@ -272,7 +285,7 @@ impl Canvas {
     /// and is counted as before.
     #[inline]
     fn x_band_active(&self) -> bool {
-        self.clip_x0 > 0 || self.clip_x1 < W as i32
+        self.bleed || self.clip_x0 > 0 || self.clip_x1 < W as i32
     }
 
     /// Record one rejected pixel, by axis. Horizontal wins when both are out: a pixel that is off

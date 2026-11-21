@@ -642,6 +642,7 @@ fn simplifiedchinese(source: &str) -> Option<&'static str> {
         "Not supported by the connected device" => Some("所连接的设备不支持"),
         "Not sure? This one picks for you" => Some("不确定？就选这个"),
         "Nothing comes after this song" => Some("这首歌之后没有其他歌曲"),
+        "Nothing here yet." => Some("暂无内容。"),
         "Nothing in this playlist." => Some("此播放列表为空。"),
         "Nothing is playing" => Some("当前未播放"),
         "Nothing is playing." => Some("当前未播放。"),
@@ -813,6 +814,7 @@ fn simplifiedchinese(source: &str) -> Option<&'static str> {
         "Pulse" => Some("脉冲"),
         "Put a .lrc file with the same name" => Some("请将同名 .lrc 歌词文件"),
         "Put each book in its own folder inside LEARNING." => Some("请将每本有声书分别放入 LEARNING 下的独立文件夹。"),
+        "Put each show in its own folder inside LEARNING/Podcasts." => Some("请将每个节目分别放入 LEARNING/Podcasts 下的独立文件夹。"),
         "QUEUE" => Some("加入队列"),
         "Quiet: inset cover, thin lines" => Some("留白封面，简洁线条"),
         "RADIAL" => Some("放射"),
@@ -1237,18 +1239,44 @@ fn simplifiedchinese(source: &str) -> Option<&'static str> {
         "[RPT]" => Some("[循环]"),
         "[SET]" => Some("[设置]"),
         "[SHUF]" => Some("[随机]"),
+        "add" => Some("添加"),
+        "add songs" => Some("添加歌曲"),
+        "album" => Some("专辑"),
+        "albums" => Some("专辑"),
+        "any album" => Some("随机专辑"),
+        "artists" => Some("歌手"),
+        "books" => Some("图书"),
+        "chapter {} of {}" => Some("第 {} 节，共 {} 节"),
+        "continue" => Some("继续"),
         "dB   ·   tap above or below the line" => Some("dB · 点按线条上方或下方"),
+        "delete" => Some("删除"),
         "each file, written on a PC by Flint or by Sony's" => Some("可在电脑上使用 Flint 或 Sony"),
+        "edit" => Some("编辑"),
+        "finished" => Some("已听完"),
+        "folders" => Some("文件夹"),
         "headphones if any are connected." => Some("如连接了蓝牙耳机，也可经蓝牙输出。"),
+        "heard" => Some("已听"),
         "line" => Some("行"),
         "lines" => Some("行"),
         "look for this Walkman in its Bluetooth list." => Some("在其蓝牙列表中选择此 Walkman。"),
+        "music" => Some("音乐"),
+        "new" => Some("新"),
+        "newest" => Some("最新"),
         "next to the song." => Some("放在歌曲文件旁。"),
         "no register access — measured from the audio, about a minute" => Some("无法读取寄存器；通过音频测量，约一分钟"),
         "or cinder.local:{}" => Some("或 cinder.local:{}"),
+        "play" => Some("播放"),
+        "playlist" => Some("播放列表"),
+        "playlists" => Some("播放列表"),
+        "podcasts" => Some("节目"),
         "reads the chip's own signal meter — about ten seconds" => Some("读取芯片信号强度；约十秒"),
+        "rename" => Some("重命名"),
+        "shuffle" => Some("随机"),
+        "smart playlist" => Some("智能播放列表"),
+        "songs" => Some("歌曲"),
         "tap it to go back to the song." => Some("点按即可返回歌曲。"),
         "this filter" => Some("此筛选条件"),
+        "your playlist" => Some("你的播放列表"),
         "{added} ADDED" => Some("已添加 {added} 首"),
         "{c} channels · {n} tracks" => Some("{c} 个频道 · {n} 首曲目"),
         "{left} LEFT" => Some("剩余 {left} 首"),
@@ -1292,9 +1320,14 @@ fn simplifiedchinese(source: &str) -> Option<&'static str> {
         "{} album" => Some("{} 张专辑"),
         "{} albums" => Some("{} 张专辑"),
         "{} albums · {} tracks" => Some("{} 张专辑 · {} 首曲目"),
+        "{} chapters" => Some("{} 节"),
         "{} deleted" => Some("已删除 {}"),
+        "{} episodes" => Some("{} 集"),
         "{} matching" => Some("{} 首匹配"),
+        "{} min in" => Some("已听 {} 分钟"),
+        "{} new of {}" => Some("{} 集新，共 {} 集"),
         "{} on {}" => Some("{} 已应用到 {}"),
+        "{} songs" => Some("{} 首歌曲"),
         "{} track" => Some("{} 首曲目"),
         "{} tracks" => Some("{} 首曲目"),
         "{} tracks · random order" => Some("{} 首曲目 · 随机顺序"),
@@ -1773,6 +1806,12 @@ macro_rules! ui_format {
             _ => format!("USB    : {} ERRORS" $(, $($args)*)?),
         }
     };
+    ("chapter {} of {}" $(, $($args:tt)*)?) => {
+        match $crate::i18n::current() {
+            $crate::i18n::Language::SimplifiedChinese => format!("第 {} 节，共 {} 节" $(, $($args)*)?),
+            _ => format!("chapter {} of {}" $(, $($args)*)?),
+        }
+    };
     ("or cinder.local:{}" $(, $($args:tt)*)?) => {
         match $crate::i18n::current() {
             $crate::i18n::Language::SimplifiedChinese => format!("或 cinder.local:{}" $(, $($args)*)?),
@@ -2037,10 +2076,22 @@ macro_rules! ui_format {
             _ => format!("{} albums · {} tracks" $(, $($args)*)?),
         }
     };
+    ("{} chapters" $(, $($args:tt)*)?) => {
+        match $crate::i18n::current() {
+            $crate::i18n::Language::SimplifiedChinese => format!("{} 节" $(, $($args)*)?),
+            _ => format!("{} chapters" $(, $($args)*)?),
+        }
+    };
     ("{} deleted" $(, $($args:tt)*)?) => {
         match $crate::i18n::current() {
             $crate::i18n::Language::SimplifiedChinese => format!("已删除 {}" $(, $($args)*)?),
             _ => format!("{} deleted" $(, $($args)*)?),
+        }
+    };
+    ("{} episodes" $(, $($args:tt)*)?) => {
+        match $crate::i18n::current() {
+            $crate::i18n::Language::SimplifiedChinese => format!("{} 集" $(, $($args)*)?),
+            _ => format!("{} episodes" $(, $($args)*)?),
         }
     };
     ("{} matching" $(, $($args:tt)*)?) => {
@@ -2049,10 +2100,28 @@ macro_rules! ui_format {
             _ => format!("{} matching" $(, $($args)*)?),
         }
     };
+    ("{} min in" $(, $($args:tt)*)?) => {
+        match $crate::i18n::current() {
+            $crate::i18n::Language::SimplifiedChinese => format!("已听 {} 分钟" $(, $($args)*)?),
+            _ => format!("{} min in" $(, $($args)*)?),
+        }
+    };
+    ("{} new of {}" $(, $($args:tt)*)?) => {
+        match $crate::i18n::current() {
+            $crate::i18n::Language::SimplifiedChinese => format!("{} 集新，共 {} 集" $(, $($args)*)?),
+            _ => format!("{} new of {}" $(, $($args)*)?),
+        }
+    };
     ("{} on {}" $(, $($args:tt)*)?) => {
         match $crate::i18n::current() {
             $crate::i18n::Language::SimplifiedChinese => format!("{} 已应用到 {}" $(, $($args)*)?),
             _ => format!("{} on {}" $(, $($args)*)?),
+        }
+    };
+    ("{} songs" $(, $($args:tt)*)?) => {
+        match $crate::i18n::current() {
+            $crate::i18n::Language::SimplifiedChinese => format!("{} 首歌曲" $(, $($args)*)?),
+            _ => format!("{} songs" $(, $($args)*)?),
         }
     };
     ("{} track" $(, $($args:tt)*)?) => {
