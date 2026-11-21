@@ -24,6 +24,30 @@ const W: i32 = crate::canvas::W as i32;
 /// The left edge of the heading, the strip and the rows: right of the back chevron.
 pub const LEFT: f32 = 22.0;
 
+/// Is `t` drawn the Pivot way? The shared header (`chrome::header`), the kit (`kit.rs`), the status
+/// bar and Up Next ask this, so every screen built from them takes the style's face and its quiet
+/// furniture without a Pivot arm of its own. Only the drawing changes: every box a finger can land
+/// on is where the Cinder look puts it.
+pub fn on(t: &Theme) -> bool {
+    t.style == crate::style::Style::Pivot
+}
+
+/// A label said the Pivot way: one written in capitals ("SAVE", "7 LEFT", "OFF") in lower case. A
+/// label with any lower-case letter in it is left as it is: it is a name (a device, a codec's
+/// "kbps") or already a sentence.
+pub fn quiet(s: &str) -> std::borrow::Cow<'_, str> {
+    if s.chars().any(char::is_lowercase) {
+        s.into()
+    } else {
+        s.to_lowercase().into()
+    }
+}
+
+/// The face at `size` and `weight` in `col`, as the Pivot style draws its furniture.
+pub fn face(weight: Weight, size: f32, col: Rgb888) -> TextStyle {
+    crate::widgets::sty(Family::Legible, weight, size, col, 0.0)
+}
+
 /// A size at the current UI text scale (the same factor `text::draw` applies to type).
 fn px(v: f32) -> i32 {
     text::scaled(v).round() as i32

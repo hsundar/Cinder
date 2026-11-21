@@ -26,6 +26,9 @@ level the commit history supports; from `v0.1.6` onward, entries are written as 
   song or album is Play Next. The album, artist and playlist pages are Pivot pages too (the
   artist page swipes between its albums and its songs), with their actions as words (play,
   shuffle, add); Now Playing puts the artist huge over the cover; the mini player drops its panel.
+  Every other screen (Up Next, Settings, Sound, Bluetooth and the rest) takes the style too: its
+  header in light lowercase, its labels, values and section names in the same face, no dividers,
+  wells or chip boxes, and its actions as words in the accent. Nothing a finger lands on moves.
   *Device-unverified* (host tests, previews and the simulator).
 
 - **Podcasts apart from audiobooks.** A folder in `LEARNING/Podcasts/`, or one whose files are all

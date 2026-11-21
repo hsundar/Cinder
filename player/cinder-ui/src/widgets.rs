@@ -21,7 +21,20 @@ pub fn fill_rect(c: &mut Canvas, x: i32, y: i32, w: i32, h: i32, col: Rgb888) {
 
 /// Full-width 1px hairline at row `y`.
 pub fn hline(c: &mut Canvas, y: i32, col: Rgb888) {
+    if QUIET_LINE.with(|q| q.get()) == Some(col) {
+        return;
+    }
     fill_rect(c, 0, y, W as i32, 1, col);
+}
+
+thread_local! {
+    static QUIET_LINE: std::cell::Cell<Option<Rgb888>> = const { std::cell::Cell::new(None) };
+}
+
+/// A divider colour [`hline`] leaves out (the Pivot style's: it separates by space, not rules), or
+/// `None` to draw every rule. Per thread, like `text::set_pivot_type`; `nav::App::render` sets it.
+pub fn set_quiet_line(col: Option<Rgb888>) {
+    QUIET_LINE.with(|q| q.set(col));
 }
 
 /// Stroked (outline) rectangle.

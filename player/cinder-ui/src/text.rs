@@ -801,6 +801,59 @@ pub fn cmap_is_sane(b: &[u8]) -> bool {
     true
 }
 
+// ── The Pivot style's type ──────────────────────────────────────────────────────────────────────
+// Pivot draws in one face. Most screens name Sans and Mono directly, and spell their labels in
+// capitals ("COMPARE", "RECEIVER MODE"), so while the style is on, `measure` and `draw` resolve both
+// to Legible and say an all-capitals Mono label in lower case. Both go through `pivot_restyle`, so
+// what a screen measures is what it draws, and every fit, centring and right-alignment still holds.
+// Per THREAD: the device draws and hit-tests on one, and tests running side by side each keep their
+// own. `nav::App::render` sets it from the style on every frame.
+
+thread_local! {
+    static PIVOT_TYPE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Draw Sans and Mono in the Pivot style's face from now on (on this thread), or stop.
+pub fn set_pivot_type(on: bool) {
+    PIVOT_TYPE.with(|p| p.set(on));
+}
+
+/// Is Sans and Mono being drawn in the Pivot face?
+pub fn pivot_type() -> bool {
+    PIVOT_TYPE.with(|p| p.get())
+}
+
+/// A label in capitals: two letters or more and none of them lower case ("SAVE", "7 LEFT").
+fn caps_label(s: &str) -> bool {
+    s.chars().filter(|c| c.is_alphabetic()).count() >= 2 && !s.chars().any(char::is_lowercase)
+}
+
+/// `s` in `st` as the Pivot style draws it, or `None` when it is drawn as it is.
+fn pivot_restyle<'a>(s: &'a str, st: &TextStyle) -> Option<(std::borrow::Cow<'a, str>, TextStyle)> {
+    if st.fam == Family::Legible || !pivot_type() {
+        return None;
+    }
+    let mono = st.fam == Family::Mono;
+    let weight = match st.weight {
+        Weight::Bold | Weight::ExtraBold if mono => Weight::SemiBold,
+        w => w,
+    };
+    let s = if mono && caps_label(s) {
+        s.to_lowercase().into()
+    } else {
+        s.into()
+    };
+    let st = TextStyle {
+        fam: Family::Legible,
+        weight,
+        // Mono labels are small capitals; in lower case the same size reads a size smaller.
+        size: if mono { st.size + 1.0 } else { st.size },
+        color: st.color,
+        tracking: if mono { st.tracking.min(0.02) } else { st.tracking },
+    };
+    Some((s, st))
+}
+
 pub struct TextStyle {
     pub fam: Family,
     pub weight: Weight,
@@ -814,6 +867,9 @@ pub struct TextStyle {
 /// the primary's `.notdef` is half — measuring against the primary while drawing from the
 /// fallback would silently desync every truncation, centring and right-alignment on the screen.
 pub fn measure(fonts: &FontSet, s: &str, st: &TextStyle) -> f32 {
+    if let Some((s, st)) = pivot_restyle(s, st) {
+        return measure(fonts, &s, &st);
+    }
     let size = scaled(st.size);
     let track = st.tracking * size;
     let char_w = |ch: char| {
@@ -857,6 +913,9 @@ pub fn draw(
     s: &str,
     st: &TextStyle,
 ) -> f32 {
+    if let Some((s, st)) = pivot_restyle(s, st) {
+        return draw(canvas, fonts, x, baseline, &s, &st);
+    }
     let size = scaled(st.size);
     let track = st.tracking * size;
     let mut pen = x;

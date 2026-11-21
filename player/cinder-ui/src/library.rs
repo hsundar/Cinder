@@ -4971,6 +4971,7 @@ mod tests {
     #[test]
     fn the_header_buttons_leave_the_title_and_the_caption_whole_at_every_size() {
         let _g = crate::text::scale_guard();
+        let t = Theme::day();
         let f = FontSet::load();
         let rs = sty(
             Family::Mono,
@@ -4984,7 +4985,7 @@ mod tests {
             for search in [false, true] {
                 let (x0, _) = view_button_x(search);
                 let x1 = controls_x1(search);
-                let title_end = crate::chrome::header_title_end(&f, "Library");
+                let title_end = crate::chrome::header_title_end(&t, &f, "Library");
                 assert!(
                     title_end <= (x0 + 8 - 16) as f32,
                     "{}%: title ends at {title_end} (search {search})",

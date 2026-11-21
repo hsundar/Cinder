@@ -68,6 +68,21 @@ pub fn section_label(
     let base = (y + SECTION_H - 8) as f32;
     let label = crate::i18n::text(label);
     let action = action.map(crate::i18n::text);
+    if crate::pivot::on(t) {
+        // Pivot: the label light and in lower case, the action a word in the accent.
+        let st = crate::pivot::face(Weight::Light, 22.0, t.dim);
+        let ast = crate::pivot::face(Weight::SemiBold, 16.0, t.acc);
+        let aw = action.map(|a| {
+            let a = crate::pivot::quiet(a);
+            let w = text::measure(f, &a, &ast);
+            text::draw(c, f, RIGHT as f32 - w, base, &a, &ast);
+            w + 16.0
+        });
+        let lw = (RIGHT - LEFT) as f32 - aw.unwrap_or(0.0);
+        let label = label.to_lowercase();
+        text::draw(c, f, LEFT as f32, base, &fit(f, &label, &st, lw), &st);
+        return y + SECTION_H;
+    }
     let st = sty(
         Family::Mono,
         Weight::Regular,
@@ -111,6 +126,14 @@ pub fn strip(c: &mut Canvas, t: &Theme, f: &FontSet, y: i32, line: &str) -> i32 
 
 /// [`strip`] in another ink: the accent when the strip can be tapped.
 pub fn strip_ink(c: &mut Canvas, t: &Theme, f: &FontSet, y: i32, line: &str, ink: Rgb888) -> i32 {
+    if crate::pivot::on(t) {
+        // Pivot: no panel and no hairlines, the line in its face.
+        let st = crate::pivot::face(Weight::Regular, 16.0, ink);
+        let line = crate::pivot::quiet(line);
+        let s = fit(f, &line, &st, (RIGHT - LEFT) as f32);
+        text::draw(c, f, LEFT as f32, (y + STRIP_H / 2 + 6) as f32, &s, &st);
+        return y + STRIP_H;
+    }
     fill_rect(c, 0, y, W as i32, STRIP_H, t.panel);
     hline(c, y, t.line);
     hline(c, y + STRIP_H - 1, t.line);
@@ -222,7 +245,11 @@ impl<'a> Row<'a> {
 /// Draw `r` at `y`, `h` tall (normally [`ROW_H()`]; a list that must fit the glass may pass less).
 /// Returns the y below it.
 pub fn row(c: &mut Canvas, t: &Theme, f: &FontSet, y: i32, h: i32, r: &Row) -> i32 {
-    if r.sel {
+    // Pivot: no wash and no divider (the chosen row is its title in the accent), every word in the
+    // style's face, a value in lower case and no chevron. Same boxes, same fitting.
+    let pivot = crate::pivot::on(t);
+    let fam = |cinder: Family| if pivot { Family::Legible } else { cinder };
+    if r.sel && !pivot {
         fill_rect(c, 0, y, W as i32, h, t.row_sel);
     }
     let cy = y + h / 2;
@@ -238,7 +265,7 @@ pub fn row(c: &mut Canvas, t: &Theme, f: &FontSet, y: i32, h: i32, r: &Row) -> i
         x += 26.0 + 14.0;
     } else if !r.lead.is_empty() {
         let lst = sty(
-            Family::Mono,
+            fam(Family::Mono),
             Weight::Regular,
             14.0,
             if r.sel { t.acc } else { t.faint },
@@ -250,19 +277,25 @@ pub fn row(c: &mut Canvas, t: &Theme, f: &FontSet, y: i32, h: i32, r: &Row) -> i
 
     // The right-hand side first: it keeps its width and the title is fitted into what is left.
     let vst = |col| {
-        sty(
-            Family::Mono,
-            Weight::Regular,
-            crate::scale::CAPTION,
-            col,
-            0.1,
-        )
+        if pivot {
+            crate::pivot::face(Weight::Regular, crate::scale::CAPTION + 2.0, col)
+        } else {
+            sty(
+                Family::Mono,
+                Weight::Regular,
+                crate::scale::CAPTION,
+                col,
+                0.1,
+            )
+        }
     };
     let mut right_edge = RIGHT as f32;
     match r.trail {
         Trail::None => {}
         Trail::Value(v) | Trail::Tag(v) | Trail::Open(v) => {
-            let chevron = matches!(r.trail, Trail::Open(_) | Trail::Tag(_));
+            let chevron = matches!(r.trail, Trail::Open(_) | Trail::Tag(_)) && !pivot;
+            let quiet = crate::pivot::quiet(v);
+            let v: &str = if pivot { &quiet } else { v };
             let vx = if chevron {
                 RIGHT as f32 - 20.0
             } else {
@@ -273,6 +306,8 @@ pub fn row(c: &mut Canvas, t: &Theme, f: &FontSet, y: i32, h: i32, r: &Row) -> i
             }
             let col = if matches!(r.trail, Trail::Tag(_)) {
                 t.acc
+            } else if pivot {
+                t.dim
             } else {
                 t.faint
             };
@@ -295,8 +330,8 @@ pub fn row(c: &mut Canvas, t: &Theme, f: &FontSet, y: i32, h: i32, r: &Row) -> i
     }
 
     let tst = sty(
-        Family::Sans,
-        Weight::SemiBold,
+        fam(Family::Sans),
+        if pivot { Weight::Regular } else { Weight::SemiBold },
         crate::scale::ROW,
         if r.sel { t.acc } else { t.ink },
         0.0,
@@ -321,7 +356,7 @@ pub fn row(c: &mut Canvas, t: &Theme, f: &FontSet, y: i32, h: i32, r: &Row) -> i
             &tst,
         );
         let sst = sty(
-            Family::Sans,
+            fam(Family::Sans),
             Weight::Regular,
             crate::scale::SECONDARY,
             t.dim,
@@ -336,7 +371,9 @@ pub fn row(c: &mut Canvas, t: &Theme, f: &FontSet, y: i32, h: i32, r: &Row) -> i
             &sst,
         );
     }
-    hline(c, y + h - 1, t.line);
+    if !pivot {
+        hline(c, y + h - 1, t.line);
+    }
     y + h
 }
 
@@ -436,10 +473,32 @@ pub fn chips_in(
     } else {
         crate::scale::SECONDARY
     };
+    let pivot = crate::pivot::on(t);
     for (i, l) in labels.iter().enumerate() {
         let l = crate::i18n::text(l);
         let (x, w) = chip_span(i, cols);
         let on = sel == Some(i);
+        if pivot {
+            // Pivot: no boxes, a row of words as its section strip is, the chosen one in the
+            // accent. The box each is tested in is the Cinder chip's.
+            let st = if on {
+                crate::pivot::face(Weight::SemiBold, size + 1.0, t.acc)
+            } else {
+                crate::pivot::face(Weight::Regular, size + 1.0, t.dim)
+            };
+            let l = l.to_lowercase();
+            let s = fit(f, &l, &st, (w - 16) as f32);
+            let tw = text::measure(f, &s, &st);
+            text::draw(
+                c,
+                f,
+                x as f32 + (w as f32 - tw) / 2.0,
+                (y + CHIP_H / 2 + 6) as f32,
+                &s,
+                &st,
+            );
+            continue;
+        }
         // Selected: the row wash and a 2 px accent ring, not a solid accent block. A screen of
         // choices (Display has three rows of them) was mostly orange, and the accent is meant for
         // the few things to act on (UI audit, 2026-11-16). The label stays in `ink`: accent text
@@ -467,6 +526,16 @@ pub fn chips_in(
 
 /// The one orange thing on a screen. Returns the y below it.
 pub fn primary_button(c: &mut Canvas, t: &Theme, f: &FontSet, y: i32, label: &str) -> i32 {
+    if crate::pivot::on(t) {
+        // Pivot: an accent outline round the word, in lower case.
+        stroke_rect(c, LEFT, y, RIGHT - LEFT, BUTTON_H, t.acc, 2);
+        let st = crate::pivot::face(Weight::SemiBold, crate::scale::ROW + 1.0, t.acc);
+        let label = label.to_lowercase();
+        let s = fit(f, &label, &st, (RIGHT - LEFT - 24) as f32);
+        let tw = text::measure(f, &s, &st);
+        text::draw(c, f, (W as f32 - tw) / 2.0, (y + BUTTON_H / 2 + 7) as f32, &s, &st);
+        return y + BUTTON_H;
+    }
     fill_rect(c, LEFT, y, RIGHT - LEFT, BUTTON_H, t.acc);
     let st = sty(
         Family::Sans,

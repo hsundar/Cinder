@@ -907,7 +907,6 @@ fn every_style_stays_on_the_panel_with_its_text_apart() {
 fn pivot_screens_stay_on_the_panel_with_their_text_apart() {
     use cinder_ui::library::Tab;
     let fonts = FontSet::load();
-    let np = np_plain();
     let mut bad: Vec<String> = Vec::new();
     for idx in 0..cinder_ui::text::SCALE_STEPS.len() {
         let _g = scale_lock(idx);
@@ -924,13 +923,22 @@ fn pivot_screens_stay_on_the_panel_with_their_text_apart() {
             a.set_style(cinder_ui::style::Style::Pivot);
             cases.push((format!("{s:?}"), a));
         }
+        // Every other screen, drawn in Pivot's face through the shared header and kit and
+        // `text::pivot_restyle`: a label that fitted in mono capitals must still fit.
+        for &s in SCREENS {
+            let mut a = at(s);
+            a.set_style(cinder_ui::style::Style::Pivot);
+            cases.push((format!("{s:?} (every screen)"), a));
+        }
         for (what, mut a) in cases {
-            let n = overflow_of(&mut a, &fonts, &np);
-            if n > 0 {
-                bad.push(format!("{what} @ {pct}%: {n} px past the margin"));
-            }
-            for (x, y, px) in collisions_of(&mut a, &fonts, &np) {
-                bad.push(format!("{what} @ {pct}%: {x:?} × {y:?} ({px} px)"));
+            for (label, np) in [("plain", np_plain()), ("hostile", np_hostile())] {
+                let n = overflow_of(&mut a, &fonts, &np);
+                if n > 0 {
+                    bad.push(format!("{what} [{label}] @ {pct}%: {n} px past the margin"));
+                }
+                for (x, y, px) in collisions_of(&mut a, &fonts, &np) {
+                    bad.push(format!("{what} [{label}] @ {pct}%: {x:?} × {y:?} ({px} px)"));
+                }
             }
         }
     }

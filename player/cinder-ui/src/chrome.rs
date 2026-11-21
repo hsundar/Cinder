@@ -180,6 +180,9 @@ pub fn status_bar(
     // number below is what it always was.
     let _own_sizes = crate::scale::IconsExempt::new(true);
     let k = if crate::scale::big_bar() { 1.25 } else { 1.0 };
+    // Pivot: the readouts in its face, the codec badge a word in the accent with no outline.
+    let pivot = crate::pivot::on(t);
+    let fam = if pivot { Family::Legible } else { Family::Mono };
     // left: clock + codec badge + (NIGHT)
     let cx = text::draw(
         c,
@@ -187,7 +190,7 @@ pub fn status_bar(
         18.0,
         27.0 + (k - 1.0) * 6.0,
         clock,
-        &sty(Family::Mono, Weight::Regular, 15.0 * k, t.dim, 0.06),
+        &sty(fam, Weight::Regular, (if pivot { 17.0 } else { 15.0 }) * k, t.dim, if pivot { 0.0 } else { 0.06 }),
     );
     // Skip the whole badge when there is no codec string. Drawing it unconditionally left a bare
     // 12px accent-stroked rectangle floating next to the clock whenever nothing was loaded —
@@ -247,16 +250,18 @@ pub fn status_bar(
         // fixed-length nor pure ASCII, which is both halves of what made the banner overrun.
         // Unclamped it drew its outline and text at whatever the font measured, straight through
         // the menu and bookmark glyphs.
-        let bst = sty(Family::Mono, Weight::Regular, 12.0, t.acc, 0.12);
+        let bst = sty(fam, Weight::Regular, if pivot { 14.0 } else { 12.0 }, t.acc, if pivot { 0.01 } else { 0.12 });
         let bx = cx + 12.0;
         let avail = zone_text_w(bx, right);
         if avail > 0.0 {
             let shown = crate::widgets::fit(f, badge, &bst, avail);
             let (ox, ow) = zone_slab(bx, text::measure(f, &shown, &bst), right);
-            Rectangle::new(Point::new(ox, 11), Size::new(ow as u32, 21))
-                .into_styled(PrimitiveStyle::with_stroke(t.acc, 1))
-                .draw(c)
-                .ok();
+            if !pivot {
+                Rectangle::new(Point::new(ox, 11), Size::new(ow as u32, 21))
+                    .into_styled(PrimitiveStyle::with_stroke(t.acc, 1))
+                    .draw(c)
+                    .ok();
+            }
             nx = text::draw(c, f, bx, 26.0, &shown, &bst);
         }
     }
@@ -264,10 +269,13 @@ pub fn status_bar(
         // NIGHT rides on the END of the badge, so a long badge pushes it further right than the
         // badge itself ever goes. Drawn only when it fits whole: a clipped "NIGH" says less than
         // nothing, and the glyphs behind it matter more than the label does.
-        let nst = sty(Family::Mono, Weight::Regular, 12.0, t.faint, 0.18);
+        let nst = sty(fam, Weight::Regular, if pivot { 14.0 } else { 12.0 }, t.faint, if pivot { 0.01 } else { 0.18 });
         let nx2 = nx + 12.0;
-        if text::measure(f, crate::i18n::text("NIGHT"), &nst) <= (right - nx2).max(0.0) {
-            text::draw(c, f, nx2, 26.0, crate::i18n::text("NIGHT"), &nst);
+        let night = crate::i18n::text("NIGHT");
+        let quiet = crate::pivot::quiet(night);
+        let night = if pivot { &quiet } else { night };
+        if text::measure(f, night, &nst) <= (right - nx2).max(0.0) {
+            text::draw(c, f, nx2, 26.0, night, &nst);
         }
     }
 
@@ -277,7 +285,7 @@ pub fn status_bar(
     icons::menu(c, MENU_CX, STATUS_MID, MENU_W * k, t.dim);
     icons::bookmark(c, SHELF_CX as f32, STATUS_MID, 23.0 * k, t.dim);
     let batt = format!("{}", battery);
-    let bs = sty(Family::Mono, Weight::Regular, 13.0 * k, t.faint, 0.04);
+    let bs = sty(fam, Weight::Regular, (if pivot { 15.0 } else { 13.0 }) * k, t.faint, 0.04);
     let bwid = text::measure(f, &batt, &bs);
     // The battery's outline keeps its right edge at the nub and grows left and both ways in y.
     let (bw, bh) = ((18.0 * k) as i32, (13.0 * k) as i32);
@@ -467,9 +475,22 @@ fn title_style(col: Rgb888) -> crate::text::TextStyle {
 
 /// Where [`header`]'s title ends, in px — for a screen that draws its own furniture to the right
 /// of it (Up Next's caption and chips). Measured, not assumed: the title grows with the UI scale.
-pub fn header_title_end(f: &FontSet, title: &str) -> f32 {
-    TITLE_X + text::measure(f, title, &title_style(Rgb888::new(0, 0, 0)))
+pub fn header_title_end(t: &Theme, f: &FontSet, title: &str) -> f32 {
+    let ink = Rgb888::new(0, 0, 0);
+    if crate::pivot::on(t) {
+        TITLE_X + text::measure(f, &title.to_lowercase(), &pivot_title_style(ink))
+    } else {
+        TITLE_X + text::measure(f, title, &title_style(ink))
+    }
 }
+
+/// The Pivot style's header title: light, larger, lower case (`pivot.rs`).
+fn pivot_title_style(col: Rgb888) -> crate::text::TextStyle {
+    crate::pivot::face(Weight::Light, 34.0, col)
+}
+
+/// Where the Pivot title sits: a little lower than the Cinder one, for its larger size.
+const PIVOT_TITLE_BASE: f32 = 76.0;
 
 pub fn header(c: &mut Canvas, t: &Theme, f: &FontSet, title: &str, right: Option<&str>) -> i32 {
     header_caption_from(c, t, f, title, right, 0.0)
@@ -558,20 +579,40 @@ fn header_impl(
 ) -> i32 {
     let chip = chip_short.is_some();
     let min_x = controls_x0;
+    // Pivot: the title light and in lower case, the caption in the same face, an action or a chip
+    // a word in the accent with no box. The boxes they are tested in do not move.
+    let pivot = crate::pivot::on(t);
+    let lower;
+    let title = if pivot {
+        lower = title.to_lowercase();
+        lower.as_str()
+    } else {
+        title
+    };
+    let quiet = right.map(crate::pivot::quiet);
+    let right = if pivot { quiet.as_deref() } else { right };
+    let quiet_short = chip_short.map(crate::pivot::quiet);
+    let chip_short = if pivot { quiet_short.as_deref() } else { chip_short };
     icons::back(c, 30.0, 62.0, BACK_GLYPH * text::touch_scale(), t.dim);
-    let ts = title_style(t.ink);
-    let rs = sty(Family::Mono, Weight::Regular, 12.0, t.faint, 0.1);
+    let ts = if pivot { pivot_title_style(t.ink) } else { title_style(t.ink) };
+    let rs = if pivot {
+        crate::pivot::face(Weight::Regular, 15.0, t.dim)
+    } else {
+        sty(Family::Mono, Weight::Regular, 12.0, t.faint, 0.1)
+    };
     // The title is FITTED. Most titles are fixed words, but some are the user's own — a playlist's
     // name on the track picker — and an unfitted one ran off the panel and left the caption a
     // zero-width space to draw "…" into, on top of it (`tests/ui_overflow.rs`, hostile library).
     // It keeps room for a caption of up to 140 px and never reaches past a control at `min_x`;
     // the caption is then fitted into whatever the title left, as before.
-    let rs = if chip {
+    let rs = if pivot && (chip || action) {
+        crate::pivot::face(Weight::SemiBold, 17.0, t.acc)
+    } else if chip {
         sty(Family::Mono, Weight::Regular, 12.0, t.dim, 0.1)
     } else {
         rs
     };
-    let rs = if action {
+    let rs = if action && !pivot {
         sty(
             Family::Mono,
             Weight::Regular,
@@ -582,7 +623,7 @@ fn header_impl(
     } else {
         rs
     };
-    let pad = if chip { CHIP_PAD } else { 0.0 };
+    let pad = if chip && !pivot { CHIP_PAD } else { 0.0 };
     let cap_room = right.map_or(0.0, |r| {
         text::measure(f, r, &rs).min(140.0) + 16.0 + 2.0 * pad
     });
@@ -591,7 +632,8 @@ fn header_impl(
         title_right = title_right.min(min_x - 16.0);
     }
     let title = crate::widgets::fit(f, title, &ts, (title_right - TITLE_X).max(0.0));
-    let title_end = text::draw(c, f, TITLE_X, 70.0, &title, &ts);
+    let base = if pivot { PIVOT_TITLE_BASE } else { 70.0 };
+    let title_end = text::draw(c, f, TITLE_X, base, &title, &ts);
     if let Some(r) = right {
         // Clamp the caption to the space right of the title (never let it overlap the title).
         let avail = (458.0 - (title_end + 16.0).max(controls_x1) - 2.0 * pad).max(0.0);
@@ -603,7 +645,9 @@ fn header_impl(
         };
         let r = crate::widgets::fit(f, r, &rs, avail);
         let rw = text::measure(f, &r, &rs);
-        if chip {
+        if pivot {
+            text::draw(c, f, 458.0 - rw, PIVOT_TITLE_BASE - 4.0, &r, &rs);
+        } else if chip {
             let (x, y, w, h) = chip_box(rw);
             stroke_rect(c, x, y, w, h, t.ctrl());
             // Baseline from the centre: a mono cap/digit is ~0.72 em tall.

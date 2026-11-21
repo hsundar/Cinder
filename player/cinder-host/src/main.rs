@@ -4431,6 +4431,21 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
         let mut c = Canvas::new();
         app.render(&mut c, &fonts, &np);
         save(&c, "pivot_now_playing");
+        // The screens drawn from the shared header and kit, which take the style from them.
+        for (name, screen) in [
+            ("pivot_up_next", Screen::UpNext),
+            ("pivot_settings", Screen::Settings),
+            ("pivot_display", Screen::Display),
+            ("pivot_sound", Screen::Sound),
+            ("pivot_bluetooth", Screen::Bluetooth),
+            ("pivot_device", Screen::Device),
+            ("pivot_help", Screen::Help),
+        ] {
+            app.go_for_preview(screen);
+            let mut c = Canvas::new();
+            app.render(&mut c, &fonts, &np);
+            save(&c, name);
+        }
         app.set_style(Style::Cinder);
     }
 }

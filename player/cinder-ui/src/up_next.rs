@@ -517,10 +517,19 @@ pub fn render_view(c: &mut Canvas, t: &Theme, f: &FontSet, v: &QueueView) -> Lay
     let left = l.upcoming_len();
     let can_clear = left > 0;
     let can_shuffle = v.current.is_some() && v.tracks.len() >= 3;
+    let pivot = crate::pivot::on(t);
     if can_clear {
         chip(c, t, f, CLEAR_CHIP, crate::i18n::text("CLEAR"));
     }
-    if can_shuffle {
+    if can_shuffle && pivot {
+        // Pivot: the word and its mark in the accent, no box (the box is still its target).
+        let (sx, sy, sw, sh) = SHUFFLE_CHIP;
+        crate::icons::shuffle(c, (sx + 14) as f32, (sy + sh / 2) as f32, 13.0, t.acc);
+        let st = crate::pivot::face(Weight::SemiBold, 16.0, t.acc);
+        let mix = crate::pivot::quiet(crate::i18n::text("MIX"));
+        let mix = crate::widgets::fit(f, &mix, &st, (sw - 28) as f32);
+        text::draw(c, f, (sx + 26) as f32, (sy + sh / 2 + 6) as f32, &mix, &st);
+    } else if can_shuffle {
         let (sx, sy, sw, sh) = SHUFFLE_CHIP;
         crate::widgets::stroke_rect(c, sx, sy, sw, sh, t.line, 1);
         crate::icons::shuffle(c, (sx + 17) as f32, (sy + sh / 2) as f32, 13.0, t.dim);
@@ -545,14 +554,23 @@ pub fn render_view(c: &mut Canvas, t: &Theme, f: &FontSet, v: &QueueView) -> Lay
         458
     };
     if v.current.is_some() {
-        let cs = sty(Family::Mono, Weight::Regular, 12.0, t.faint, 0.1);
+        let cs = if pivot {
+            crate::pivot::face(Weight::Regular, 15.0, t.dim)
+        } else {
+            sty(Family::Mono, Weight::Regular, 12.0, t.faint, 0.1)
+        };
         let room = (cap_right - 12) as f32
-            - (crate::chrome::header_title_end(f, crate::i18n::text("Up Next")) + 12.0);
+            - (crate::chrome::header_title_end(t, f, crate::i18n::text("Up Next")) + 12.0);
         let long = caption(left, v.drag.is_some());
         let short = if v.drag.is_some() {
             String::from(crate::i18n::text("DRAG"))
         } else {
             crate::ui_format!("{left} LEFT", left = left)
+        };
+        let (long, short) = if pivot {
+            (crate::pivot::quiet(&long).into_owned(), crate::pivot::quiet(&short).into_owned())
+        } else {
+            (long, short)
         };
         if let Some(cap) = [long, short]
             .into_iter()
@@ -600,8 +618,12 @@ pub fn render_view(c: &mut Canvas, t: &Theme, f: &FontSet, v: &QueueView) -> Lay
         }
         match *slot {
             Slot::Head(sec) => {
-                let col = if sec == Section::Now { t.acc } else { t.faint };
-                let hs = sty(Family::Mono, Weight::Regular, 11.0, col, 0.18);
+                let col = if sec == Section::Now { t.acc } else if pivot { t.dim } else { t.faint };
+                let hs = if pivot {
+                    crate::pivot::face(Weight::Light, 20.0, col)
+                } else {
+                    sty(Family::Mono, Weight::Regular, 11.0, col, 0.18)
+                };
                 // The label's budget stops short of the control on the two headings that have one
                 // (CLEAR on history, SAVE on now playing), so a long album name can never run
                 // underneath it.
@@ -610,7 +632,9 @@ pub fn render_view(c: &mut Canvas, t: &Theme, f: &FontSet, v: &QueueView) -> Lay
                 } else {
                     (W as f32) - 44.0
                 };
-                let lbl = crate::widgets::fit(f, &section_label(sec, v.album), &hs, budget);
+                let label = section_label(sec, v.album);
+                let label = if pivot { crate::pivot::quiet(&label).into_owned() } else { label };
+                let lbl = crate::widgets::fit(f, &label, &hs, budget);
                 text::draw(c, f, 22.0, (y + HDR_H - 11) as f32, &lbl, &hs);
                 let action = match sec {
                     Section::History => Some(crate::i18n::text("CLEAR")),
@@ -618,22 +642,26 @@ pub fn render_view(c: &mut Canvas, t: &Theme, f: &FontSet, v: &QueueView) -> Lay
                     Section::Next => None,
                 };
                 if let Some(a) = action {
-                    right(
-                        c,
-                        f,
-                        HIST_CLEAR_X1 as f32,
-                        (y + HDR_H - 11) as f32,
-                        a,
-                        &sty(Family::Mono, Weight::Bold, 11.0, t.dim, 0.14),
-                    );
+                    let quiet = crate::pivot::quiet(a);
+                    let (a, st) = if pivot {
+                        (&*quiet, crate::pivot::face(Weight::SemiBold, 16.0, t.acc))
+                    } else {
+                        (a, sty(Family::Mono, Weight::Bold, 11.0, t.dim, 0.14))
+                    };
+                    right(c, f, HIST_CLEAR_X1 as f32, (y + HDR_H - 11) as f32, a, &st);
                 }
-                hline(c, y + HDR_H - 1, t.line);
+                if !pivot {
+                    hline(c, y + HDR_H - 1, t.line);
+                }
             }
 
             Slot::Current(i) => {
                 if let Some(song) = v.tracks.get(i) {
-                    fill_rect(c, 0, y, W as i32, RH(), t.panel);
-                    fill_rect(c, 0, y, 4, RH(), t.acc);
+                    // Pivot: the playing row is its words in the accent, with no well or bar.
+                    if !pivot {
+                        fill_rect(c, 0, y, W as i32, RH(), t.panel);
+                        fill_rect(c, 0, y, 4, RH(), t.acc);
+                    }
                     track_row(c, t, f, song, v.lib, y, 0, false, true, false);
                 }
             }
@@ -680,7 +708,7 @@ pub fn render_view(c: &mut Canvas, t: &Theme, f: &FontSet, v: &QueueView) -> Lay
                 }
             }
         }
-        if slot.is_row() {
+        if slot.is_row() && !pivot {
             hline(c, y + slot.h(), t.line);
         }
     }
@@ -723,6 +751,13 @@ pub fn render_view(c: &mut Canvas, t: &Theme, f: &FontSet, v: &QueueView) -> Lay
 /// A labelled header chip.
 fn chip(c: &mut Canvas, t: &Theme, f: &FontSet, r: (i32, i32, i32, i32), label: &str) {
     let (x, y, w, h) = r;
+    if crate::pivot::on(t) {
+        let st = crate::pivot::face(Weight::SemiBold, 16.0, t.acc);
+        let label = crate::pivot::quiet(label);
+        let label = crate::widgets::fit(f, &label, &st, (w - 4) as f32);
+        crate::widgets::center(c, f, (x + w / 2) as f32, (y + h / 2 + 6) as f32, &label, &st);
+        return;
+    }
     crate::widgets::stroke_rect(c, x, y, w, h, t.line, 1);
     crate::widgets::center(
         c,
@@ -752,6 +787,8 @@ fn track_row(
     grippy: bool,
 ) {
     let cy = (y + RH() / 2) as f32;
+    let pivot = crate::pivot::on(t);
+    let fam = |cinder: Family| if pivot { Family::Legible } else { cinder };
     let idx_col = if now { t.acc } else { t.faint };
     let idx = if now {
         Some("\u{25b6}".to_string())
@@ -767,7 +804,7 @@ fn track_row(
             22.0,
             cy + 4.0,
             &idx,
-            &sty(Family::Mono, Weight::Regular, 12.0, idx_col, 0.0),
+            &sty(fam(Family::Mono), Weight::Regular, if pivot { 14.0 } else { 12.0 }, idx_col, 0.0),
         );
     }
     // Played rows fade their art too, so the eye finds the current row without reading a word.
@@ -797,8 +834,8 @@ fn track_row(
         t.ink
     };
     let tst = sty(
-        Family::Sans,
-        Weight::SemiBold,
+        fam(Family::Sans),
+        if pivot { Weight::Regular } else { Weight::SemiBold },
         crate::scale::ROW,
         title_col,
         0.0,
@@ -818,7 +855,7 @@ fn track_row(
         &tst,
     );
     let ast = sty(
-        Family::Sans,
+        fam(Family::Sans),
         Weight::Regular,
         15.0,
         if past { t.faint } else { t.dim },
@@ -843,7 +880,7 @@ fn track_row(
         dx,
         cy + 4.0,
         &song.dur,
-        &sty(Family::Mono, Weight::Regular, 13.0, t.faint, 0.0),
+        &sty(fam(Family::Mono), Weight::Regular, if pivot { 15.0 } else { 13.0 }, t.faint, 0.0),
     );
     if grippy {
         grip(c, t, y, false);

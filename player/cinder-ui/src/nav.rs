@@ -12087,6 +12087,8 @@ impl App {
             Screen::NowPlaying | Screen::Onboarding
         ));
         let _language = crate::i18n::enter(self.language);
+        // Pivot draws every screen's Sans and Mono in its own face (`text::pivot_restyle`).
+        crate::text::set_pivot_type(self.pivot());
         self.reconcile_playing(np.playing);
         // The shell owns the shuffle flag; the MIX chip only needs to know which way it points.
         self.shuffle_on = np.shuffle;
@@ -12113,6 +12115,8 @@ impl App {
                 .and_then(|i| i.tint());
             cover.map_or(t, |c| t.tinted(c))
         };
+        // Pivot draws no dividers: a full-width rule in the theme's `line` is skipped.
+        crate::widgets::set_quiet_line(self.pivot().then_some(theme.line));
         // The hour on the clock the status bar is about to draw ("14:32"), for SensMe's
         // time-of-day channel. Kept when a frame has no clock rather than forgotten.
         if let Some(h) = np
@@ -13909,6 +13913,10 @@ impl App {
         if let Some(s) = crate::style::Style::from_token(v) {
             self.style = s;
         }
+        crate::text::set_pivot_type(self.pivot());
+        if !self.pivot() {
+            crate::widgets::set_quiet_line(None);
+        }
     }
 
     pub fn style(&self) -> crate::style::Style {
@@ -13917,6 +13925,10 @@ impl App {
 
     pub fn set_style(&mut self, s: crate::style::Style) {
         self.style = s;
+        crate::text::set_pivot_type(self.pivot());
+        if !self.pivot() {
+            crate::widgets::set_quiet_line(None);
+        }
     }
 
     pub fn set_volume_hud(&mut self, v: &str) {

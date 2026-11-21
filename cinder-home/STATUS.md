@@ -9,7 +9,12 @@
 >   artist (swipes between albums and songs) and playlist pages, Now Playing (Nocturne's targets)
 >   and the mini player are Pivot too. Pivot screens are in `tests/ui_overflow.rs` at every scale;
 >   headings and strips run off the edge through `Canvas::bleed_x`. Simulator: swipes, pages,
->   action words, episodes. Checklist §52. Still in the Cinder look: Up Next, Settings and the rest.
+>   action words, episodes. Checklist §52. Every other screen follows through the shared pieces:
+>   `chrome::header`, the kit's rows, labels, strips, chips and button, the status bar and Up Next
+>   draw the Pivot way when `pivot::on(theme)`; `text::set_pivot_type` (set per frame by
+>   `App::render`) draws every Sans and Mono in Legible and says capitals labels in lower case,
+>   through `measure` and `draw` alike; `widgets::set_quiet_line` drops the dividers. Same
+>   geometry, so the hit tests are untouched; the overflow test walks every screen in Pivot.
 > - **Podcasts**: `BookRow::is_podcast` (a `LEARNING/Podcasts/<show>` folder, or every file named
 >   `YYYY-MM-DD …`). Pivot lists shows in their own section and opens one to its episodes newest
 >   first; `Action::PlayEpisode { book, chapter }` plays one, resuming only the episode the saved
