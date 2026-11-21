@@ -296,6 +296,7 @@ fn main() {
         viz_sig: None,
         scrubbing: false,
         lyrics: false,
+        spoken: false,
     };
 
     // Scripted, windowless run: gestures from a file, frames to disk, then exit.

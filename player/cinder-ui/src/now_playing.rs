@@ -253,6 +253,47 @@ pub(crate) fn g(px: f32) -> f32 {
     }
 }
 
+/// ◁ (`back`) or ▷ at (`cx`, `cy`), `s` px: the track-skip triangles for music, and for a book or
+/// a podcast ([`NowPlaying::spoken`]) a ring with the seconds it skips inside — 10 back, 30 ahead
+/// (`books::SKIP_BACK_MS` / `SKIP_AHEAD_MS` in the FFI). Every style draws its ◁ ▷ through this.
+pub fn skip_glyph(
+    c: &mut Canvas,
+    f: &FontSet,
+    np: &NowPlaying,
+    back: bool,
+    cx: f32,
+    cy: f32,
+    s: f32,
+    col: embedded_graphics::pixelcolor::Rgb888,
+) {
+    if !np.spoken {
+        if back {
+            icons::prev(c, cx, cy, s, col);
+        } else {
+            icons::next(c, cx, cy, s, col);
+        }
+        return;
+    }
+    // The ring a little larger than the triangles were, so the number inside reads.
+    let ring = s * 1.15;
+    icons::skip_ring(c, cx, cy, ring, col, back);
+    let size = (crate::scale::icon(ring) * 0.32).round();
+    // Sized in pixels, not by the text scale: the number belongs to the glyph, so the scale the
+    // text is about to be multiplied by is divided out first.
+    let st = crate::widgets::sty(
+        Family::Sans,
+        Weight::SemiBold,
+        size * 100.0 / crate::text::scale_pct() as f32,
+        col,
+        0.0,
+    );
+    let label = if back { "10" } else { "30" };
+    let w = crate::text::measure(f, label, &st);
+    // The ring's centre is 1/24 below the glyph's, as drawn in `icons::skip_ring`.
+    let base = cy + crate::scale::icon(ring) / 24.0 + size * 0.36;
+    crate::text::draw(c, f, cx - w / 2.0, base.round(), label, &st);
+}
+
 /// The heart's touch half-size: 76 px (6.4 mm) square in Big view.
 pub fn heart_half() -> i32 {
     if big() {
@@ -667,6 +708,9 @@ pub struct NowPlaying<'a> {
     /// The playing song has lyrics: draw the Lyrics chip ([`hit_lyrics`]). Injected by `nav`,
     /// which owns the parsed lyrics; the shell passes `false`.
     pub lyrics: bool,
+    /// A book's chapter or a podcast's episode is playing: ◁ and ▷ are 10 s back and 30 s ahead
+    /// (`cinder_spoken_skip`), and draw so ([`skip_glyph`]).
+    pub spoken: bool,
     /// The Winamp style's skin (`skin.rs`), when the shell has one loaded.
     pub skin: Option<&'a crate::skin::Skin>,
     /// The Cassette style's tape, when the shell has one loaded (`tape.rs`).
@@ -1279,7 +1323,7 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying) {
         g(24.0),
         if np.shuffle { t.acc } else { t.faint },
     );
-    icons::prev(c, PREV_X as f32, ty, g(38.0), t.ink);
+    skip_glyph(c, f, np, true, PREV_X as f32, ty, g(38.0), t.ink);
     Circle::with_center(Point::new(240, ty as i32), 92)
         .into_styled(PrimitiveStyle::with_fill(t.acc))
         .draw(c)
@@ -1289,7 +1333,7 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying) {
     } else {
         icons::play(c, 240.0, ty, g(38.0), t.acc_ink);
     }
-    icons::next(c, NEXT_X as f32, ty, g(38.0), t.ink);
+    skip_glyph(c, f, np, false, NEXT_X as f32, ty, g(38.0), t.ink);
     icons::repeat(
         c,
         REPEAT_X as f32,
@@ -1389,6 +1433,7 @@ mod tests {
             page,
             scrubbing: false,
             lyrics: false,
+            spoken: false,
         }
     }
 
@@ -1677,6 +1722,7 @@ mod tests {
                                 repeat,
                                 scrubbing: repeat == 2,
                                 lyrics: page == 1,
+                                spoken: false,
                                 ..np_with(page, 1, &levels)
                             };
                             let mut c = Canvas::new();

@@ -466,9 +466,9 @@ fn nocturne_render(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying, l: &
         icons::play(c, px + 2.0, py, np::g(26.0), t.acc);
     }
     let (x, y) = centre(l, Hit::Prev);
-    icons::prev(c, x, y, np::g(28.0), side);
+    np::skip_glyph(c, f, np, true, x, y, np::g(28.0), side);
     let (x, y) = centre(l, Hit::Next);
-    icons::next(c, x, y, np::g(28.0), side);
+    np::skip_glyph(c, f, np, false, x, y, np::g(28.0), side);
     let (x, y) = centre(l, Hit::Shuffle);
     icons::shuffle(
         c,
@@ -640,9 +640,9 @@ fn pivot_render(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying, l: &Lay
         icons::play(c, px + 2.0, py, np::g(26.0), side);
     }
     let (x, y) = centre(l, Hit::Prev);
-    icons::prev(c, x, y, np::g(28.0), side);
+    np::skip_glyph(c, f, np, true, x, y, np::g(28.0), side);
     let (x, y) = centre(l, Hit::Next);
-    icons::next(c, x, y, np::g(28.0), side);
+    np::skip_glyph(c, f, np, false, x, y, np::g(28.0), side);
     let (x, y) = centre(l, Hit::Shuffle);
     icons::shuffle(
         c,
@@ -939,8 +939,10 @@ fn terminal_render(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying, l: &
         },
         t.acc,
     );
-    word(c, Hit::Prev, "[<<]", side);
-    word(c, Hit::Next, "[>>]", side);
+    // A book or a podcast: the keys skip seconds, not tracks (`np::skip_glyph`).
+    let (prev, next) = if np.spoken { ("[-10]", "[+30]") } else { ("[<<]", "[>>]") };
+    word(c, Hit::Prev, prev, side);
+    word(c, Hit::Next, next, side);
     word(
         c,
         Hit::Shuffle,
@@ -1193,8 +1195,13 @@ fn cassette_render(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying, l: &
         },
         playing,
     );
-    key(c, Hit::Prev, crate::i18n::text("REW"), false);
-    key(c, Hit::Next, crate::i18n::text("FF"), false);
+    if np.spoken {
+        key(c, Hit::Prev, "-10", false);
+        key(c, Hit::Next, "+30", false);
+    } else {
+        key(c, Hit::Prev, crate::i18n::text("REW"), false);
+        key(c, Hit::Next, crate::i18n::text("FF"), false);
+    }
     key(
         c,
         Hit::Shuffle,

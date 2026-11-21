@@ -102,6 +102,35 @@ pub fn next(c: &mut Canvas, cx: f32, cy: f32, s: f32, col: Rgb888) {
     polygon(c, cx, cy, s, col, &[(6.0, 6.2), (14.2, 12.0), (6.0, 17.8)]);
 }
 
+/// The spoken-word skip: a ring open at the top with an arrowhead on its end, pointing
+/// anticlockwise for back (`back`) and clockwise for ahead. The seconds go inside, drawn by the
+/// caller (`now_playing::skip_glyph`), which has the fonts.
+pub fn skip_ring(c: &mut Canvas, cx: f32, cy: f32, s: f32, col: Rgb888, back: bool) {
+    let s = crate::scale::icon(s);
+    let w = stroke_w(s);
+    // 300° of a circle of radius 9 in the 24 grid, centred at (12, 13). Ahead runs clockwise and
+    // back anticlockwise (screen y is down, so a rising angle is clockwise) and each ends just past
+    // twelve o'clock, the head pointing on across the top and the gap behind it — the shape of the
+    // usual replay and forward marks.
+    let (ox, oy, r) = (12.0_f32, 13.0_f32, 9.0_f32);
+    let dir = if back { -1.0_f32 } else { 1.0 };
+    let start = -90.0_f32 + dir * 50.0;
+    let pts: Vec<(f32, f32)> = (0..=30)
+        .map(|i| {
+            let a = (start + dir * 10.0 * i as f32).to_radians();
+            (ox + r * a.cos(), oy + r * a.sin())
+        })
+        .collect();
+    polyline(c, cx, cy, s, col, w, &pts);
+    let end = (start + dir * 300.0).to_radians();
+    let (ex, ey) = pts[30];
+    // The direction of travel at the end, and its normal.
+    let (dx, dy) = (-end.sin() * dir, end.cos() * dir);
+    let (nx, ny) = (-dy, dx);
+    let back_of = |k: f32| (ex - 3.6 * dx + k * 3.2 * nx, ey - 3.6 * dy + k * 3.2 * ny);
+    polyline(c, cx, cy, s, col, w, &[back_of(1.0), (ex, ey), back_of(-1.0)]);
+}
+
 pub fn shuffle(c: &mut Canvas, cx: f32, cy: f32, s: f32, col: Rgb888) {
     let s = crate::scale::icon(s);
     let w = stroke_w(s);

@@ -29,7 +29,7 @@ fn np_hostile() -> NowPlaying<'static> {
         page: 0,
         viz_levels: None,
         viz_peaks: None, viz_sig: None,
-        scrubbing: false, lyrics: false,
+        scrubbing: false, lyrics: false, spoken: false,
     }
 }
 

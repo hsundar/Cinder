@@ -31,6 +31,12 @@ level the commit history supports; from `v0.1.6` onward, entries are written as 
   wells or chip boxes, and its actions as words in the accent. Nothing a finger lands on moves.
   *Device-unverified* (host tests, previews and the simulator).
 
+- **◁ and ▷ skip seconds in a book or a podcast.** While a chapter or an episode plays, ◁ goes
+  10 s back (to the chapter's start at most) and ▷ 30 s ahead, from the screen and from the
+  Walkman's keys alike; near the end of a chapter ▷ goes on to the next one. Now Playing draws them
+  as replay-10 and forward-30 rings (Terminal: `[-10]` `[+30]`; the keys style: −10 / +30).
+  *Device-unverified.*
+
 - **Podcasts apart from audiobooks.** A folder in `LEARNING/Podcasts/`, or one whose files are all
   named from a date (`2026-11-03 Title.mp3`), is a podcast show. In Pivot, shows have their own
   "podcasts" section beside "books", and a show opens to its episodes newest first, each marked

@@ -239,6 +239,7 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
         viz_sig: None,
         scrubbing: false,
         lyrics: false,
+        spoken: false,
     };
     let lk = lock::Lock {
         clock: "14:32",
@@ -456,6 +457,7 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
                     &fonts,
                     &now_playing::NowPlaying {
                         lyrics: true,
+                        spoken: false,
                         liked: true,
                         repeat: 3,
                         ..np
@@ -514,6 +516,7 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
                     &fonts,
                     &now_playing::NowPlaying {
                         lyrics: true,
+                        spoken: false,
                         liked: true,
                         shuffle: true,
                         repeat: 1,
@@ -4431,6 +4434,20 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
         let mut c = Canvas::new();
         app.render(&mut c, &fonts, &np);
         save(&c, "pivot_now_playing");
+        // A book or a podcast playing: ◁ ▷ are 10 s back and 30 s ahead, in every style.
+        let spoken = now_playing::NowPlaying { spoken: true, ..np };
+        for (name, style) in [
+            ("spoken_pivot", Style::Pivot),
+            ("spoken_cinder", Style::Cinder),
+            ("spoken_terminal", Style::Terminal),
+        ] {
+            app.set_style(style);
+            app.go_for_preview(Screen::NowPlaying);
+            let mut c = Canvas::new();
+            app.render(&mut c, &fonts, &spoken);
+            save(&c, name);
+        }
+        app.set_style(Style::Pivot);
         // The screens drawn from the shared header and kit, which take the style from them.
         for (name, screen) in [
             ("pivot_up_next", Screen::UpNext),

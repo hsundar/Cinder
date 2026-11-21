@@ -1219,6 +1219,7 @@ times are from power-on.
 | 52.7 | Now Playing in Pivot: every control answers where it is drawn; the page swipe on the cover still turns pages | Open |
 | 52.8 | Connect to baaja: shows sent before move into `LEARNING/Podcasts`, and their place in `cinder_books.tsv` survives (the show resumes at the same episode and time) | Open |
 | 52.9 | Pivot ▸ podcasts: a show lists its episodes newest first with new / min in / heard; tap one plays it; "newest" and "continue" | Open |
+| 52.11 | Play a book, then a podcast: ◁ on screen and the side key go 10 s back, ▷ 30 s ahead (presses add up); ▷ in the last 30 s goes to the next chapter; the place saved in `cinder_books.tsv` follows; music still skips tracks | Open |
 | 52.10 | Pivot: Up Next (mix, clear, save, drag to reorder, swipe to remove), Settings, Display, Sound and Bluetooth draw in the Pivot face and every control still answers where it is drawn; switching back to Cinder restores the Cinder look at once | Open |
 
 **Decision for the owner.** Cinder's first frame waits 2.4–3.5 s for Sony's app framework

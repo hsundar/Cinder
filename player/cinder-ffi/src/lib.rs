@@ -3460,6 +3460,7 @@ pub extern "C" fn cinder_render_tick() {
         viz_sig: if animate { Some(&sig) } else { None },
         scrubbing: r.scrub_ms.is_some(),
         lyrics: false,
+        spoken: !casting(r) && playing_spoken(r),
     };
     // The navigator decides which screen is showing; it draws Now Playing from `np` and
     // the list/menu screens from their own state.
@@ -3601,6 +3602,7 @@ pub extern "C" fn cinder_render_bench(frames: libc::c_int, scroll: libc::c_int) 
             viz_sig: None,
             scrubbing: false,
             lyrics: false,
+            spoken: false,
         };
         r.canvas.clear_clip();
         let t0 = std::time::Instant::now();
@@ -12033,6 +12035,34 @@ pub extern "C" fn cinder_cue_skip(dir: libc::c_int) -> libc::c_int {
         Some(ms) => ms.clamp(0, i32::MAX as i64) as libc::c_int,
         None => -1,
     }
+}
+
+/// ◁ and ▷ in a book or a podcast: the seek target in ms (back 10 s, ahead 30 s, as spoken-word
+/// players do), or -1 when the key should do what it does for music — something else is playing,
+/// the books component is off, or ▷ would run off the end of the chapter, where it goes on to the
+/// next. The shell asks before its queue and CUE rules, for the screen's buttons and the
+/// Walkman's keys alike (both arrive as Next/Prev). Never while casting: the speaker owns the music.
+#[no_mangle]
+pub extern "C" fn cinder_spoken_skip(dir: libc::c_int) -> libc::c_int {
+    let guard = cell().lock().unwrap();
+    let Some(r) = guard.as_ref() else { return -1 };
+    if casting(r) || !playing_spoken(r) {
+        return -1;
+    }
+    match books::spoken_skip(live_pos_ms(r), r.cur_duration_ms, dir) {
+        Some(ms) => ms.clamp(0, i32::MAX as i64) as libc::c_int,
+        None => -1,
+    }
+}
+
+/// Is the track playing a chapter of a book or an episode of a podcast (a file in `LEARNING`, with
+/// the books component on)? The same test that keeps its place in `cinder_books.tsv`.
+fn playing_spoken(r: &Render) -> bool {
+    !r.app.library().books.is_empty()
+        && r
+            .last_track
+            .as_ref()
+            .is_some_and(|t| books::book_dir(&t.filename).is_some())
 }
 
 /// Move an in-progress scrub to UI (x, y). Returns the seek target in ms (>= 0) when the gesture

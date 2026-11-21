@@ -415,9 +415,41 @@ pub fn is_finished(chapter_idx: usize, chapters: usize, pos_ms: i64, duration_ms
         && pos_ms >= duration_ms - FINISHED_WITHIN_MS.min(duration_ms / 10)
 }
 
+/// How far ◁ goes back in a book or a podcast: far enough to hear again the sentence just missed.
+pub const SKIP_BACK_MS: i64 = 10_000;
+/// How far ▷ goes forward: past an advert or a digression, not past the chapter.
+pub const SKIP_AHEAD_MS: i64 = 30_000;
+
+/// Where ◁ (`dir < 0`) or ▷ (`dir > 0`) takes a listener at `pos_ms` into a spoken chapter of
+/// `duration_ms` (0 when unknown), or `None` when the key should do what it does for music. Back
+/// stops at the start of the chapter. Ahead is `None` when it would land within a second of the end
+/// or past it, so the key goes on to the next chapter or episode instead of seeking into silence.
+pub fn spoken_skip(pos_ms: i64, duration_ms: i64, dir: i32) -> Option<i64> {
+    let pos = pos_ms.max(0);
+    match dir.signum() {
+        -1 => Some((pos - SKIP_BACK_MS).max(0)),
+        1 => {
+            let to = pos + SKIP_AHEAD_MS;
+            (duration_ms <= 0 || to < duration_ms - 1000).then_some(to)
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spoken_keys_go_back_ten_seconds_and_ahead_thirty() {
+        assert_eq!(spoken_skip(65_000, 600_000, -1), Some(55_000));
+        assert_eq!(spoken_skip(4_000, 600_000, -1), Some(0), "back stops at the chapter's start");
+        assert_eq!(spoken_skip(65_000, 600_000, 1), Some(95_000));
+        assert_eq!(spoken_skip(65_000, 0, 1), Some(95_000), "an unknown length still skips");
+        assert_eq!(spoken_skip(580_000, 600_000, 1), None, "near the end: the next chapter");
+        assert_eq!(spoken_skip(569_000, 600_000, 1), None, "landing in the last second");
+        assert_eq!(spoken_skip(10_000, 600_000, 0), None);
+    }
 
     #[test]
     fn a_file_in_learning_belongs_to_the_folder_that_holds_it() {

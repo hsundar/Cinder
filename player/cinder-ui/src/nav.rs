@@ -12173,6 +12173,7 @@ impl App {
                     viz_size: if live { self.viz_size } else { 0 },
                     page: self.np_page,
                     lyrics: self.lyrics_button(),
+                    spoken: np.spoken,
                     ..*np
                 };
                 if let (true, Some(tape)) = (self.tape_view(), np2.tape) {
@@ -20652,6 +20653,7 @@ mod tests {
             page: 0,
             scrubbing: false,
             lyrics: false,
+            spoken: false,
         }
     }
 
@@ -21207,6 +21209,7 @@ mod tests {
             page: 0,
             scrubbing: false,
             lyrics: false,
+            spoken: false,
         };
         a.render(&mut c, &fonts, &np);
         assert_eq!(a.clock_hour, Some(21));
@@ -26777,6 +26780,7 @@ mod tests {
             viz_sig: None,
             scrubbing: false,
             lyrics: false,
+            spoken: false,
         };
         let mut c = Canvas::new();
         let fonts = FontSet::load();
@@ -28092,6 +28096,7 @@ mod palette_tests {
             viz_sig: None,
             scrubbing: false,
             lyrics: false,
+            spoken: false,
         };
         // The background is the colour most of the frame is painted in.
         let dominant = |a: &mut App| {

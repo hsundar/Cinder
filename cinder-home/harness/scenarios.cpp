@@ -1630,6 +1630,33 @@ static void s_cue_skip(void) {
           "both seek to the CUE track the FFI named");
 }
 
+// ── ▷ and ◁ in a book or a podcast ─────────────────────────────────────────────────────────────
+// The FFI answers cinder_spoken_skip with 30 s ahead / 10 s back, and the shell seeks there before
+// its queue and CUE rules. Near a chapter's end it answers -1 and ▷ is an ordinary next track.
+static void s_spoken_skip(void) {
+    healthy_device();
+    cinder_harness_input_enable();
+    static const long long acts[] = {2, 3, 2};               // NEXT, PREV, NEXT
+    cinder_harness_script_seq("cinder_input", acts, 3);
+    static const long long spoken[] = {95000, 85000, -1};    // the last: at the chapter's end
+    cinder_harness_script_seq("cinder_spoken_skip", spoken, 3);
+    cinder_harness_key_at(30000, 106, 1);
+    cinder_harness_key_at(30060, 106, 0);
+    cinder_harness_key_at(34000, 105, 1);
+    cinder_harness_key_at(34060, 105, 0);
+    cinder_harness_key_at(38000, 106, 1);
+    cinder_harness_key_at(38060, 106, 0);
+    cinder_harness_set_budget_ms(44000);
+    cinder_harness_run();
+
+    check_eq(cinder_harness_count("cinder_audio_prev_track"), 0, "◁ in a book asks for no other file");
+    check_eq(cinder_harness_count("cinder_audio_next_track"), 1, "▷ at a chapter's end goes on to the next");
+    const int n = cinder_harness_count("cinder_audio_seek_ms");
+    check(n >= 2 && cinder_harness_arg("cinder_audio_seek_ms", n - 2) == 95000
+                 && cinder_harness_arg("cinder_audio_seek_ms", n - 1) == 85000,
+          "▷ seeks 30 s ahead and ◁ 10 s back, where the FFI said");
+}
+
 // The same burst from the GLASS rather than the side button, which is the case that wedges. A
 // finger on the panel streams position frames for as long as it is down, and those frames arrive
 // while the app is blocked inside the previous skip — so the drain loop's "read came back short"
@@ -3257,6 +3284,7 @@ static const Scenario kScenarios[] = {
     {"rapid-skip",        s_rapid_skip,              "skipping faster than PlayerService answers must not wedge the UI"},
     {"rapid-skip-touch",  s_rapid_skip_touch,        "the same burst from the glass, where the panel keeps streaming"},
     {"cue-skip",          s_cue_skip,                "▷/◁ inside a CUE file seek to its tracks instead of skipping"},
+    {"spoken-skip",       s_spoken_skip,             "▷/◁ in a book or a podcast seek 30 s ahead / 10 s back"},
     {"contents-orphan",   s_contents_orphan,         "/contents unmounted by something that is not us is taken back"},
     {"contents-ours",     s_contents_orphan_not_ours,"…but a session we started is left alone"},
     {"repeat-all",        s_repeat_all,              "a queue that runs out loops Cinder's context, once"},

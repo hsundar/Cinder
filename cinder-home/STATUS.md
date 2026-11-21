@@ -15,6 +15,11 @@
 >   `App::render`) draws every Sans and Mono in Legible and says capitals labels in lower case,
 >   through `measure` and `draw` alike; `widgets::set_quiet_line` drops the dividers. Same
 >   geometry, so the hit tests are untouched; the overflow test walks every screen in Pivot.
+> - **Spoken-word skips**: `cinder_spoken_skip(dir)` (FFI) answers 10 s back / 30 s ahead
+>   (`books::spoken_skip`) while a `LEARNING` file plays and the books component is on, -1
+>   otherwise or when ▷ would pass the chapter's end; `CINDER_ACT_NEXT`/`_PREV` in `main.cpp` ask it
+>   before the queue and CUE rules, so the screen and the keys both skip. `NowPlaying::spoken`
+>   draws the rings (`now_playing::skip_glyph`). Harness scenario `spoken-skip`.
 > - **Podcasts**: `BookRow::is_podcast` (a `LEARNING/Podcasts/<show>` folder, or every file named
 >   `YYYY-MM-DD …`). Pivot lists shows in their own section and opens one to its episodes newest
 >   first; `Action::PlayEpisode { book, chapter }` plays one, resuming only the episode the saved

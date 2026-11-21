@@ -660,6 +660,9 @@ int  cinder_get_dac_eq(signed char *out);
 int  cinder_get_vol_curve(unsigned char *out);
 /* Prev (dir < 0) / Next inside a file with a CUE sheet: the ms to seek to, or -1 to skip as usual. */
 int  cinder_cue_skip(int dir);
+/* Prev (dir < 0) / Next in a book or a podcast: the ms to seek to (10 s back, 30 s ahead), or -1
+ * to skip as usual (not spoken word, casting, or Next near the end of the chapter). */
+int  cinder_spoken_skip(int dir);
 /* 0: cinder-voltable is not installed. 1: it is (conf not read yet). 2: it is and
  * cinder_voltable.conf holds the owner's curve. 3: it is and the conf holds another curve, which
  * switches the UI's curve off. */

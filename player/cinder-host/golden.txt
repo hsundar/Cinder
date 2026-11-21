@@ -493,6 +493,9 @@ fc8b35ce8b081cf7 wifi_failed
 09c73a6865d9118f pivot_artist_songs
 a13b0f6d2099ffad pivot_playlist
 8fa729205206c709 pivot_now_playing
+2363122925ba89f5 spoken_pivot
+c469d97f0728f131 spoken_cinder
+b1df4d3f9fac2237 spoken_terminal
 d9ee65f1a449fa04 pivot_up_next
 97995cee6447bcb4 pivot_settings
 351ce46bf71c2e5b pivot_display

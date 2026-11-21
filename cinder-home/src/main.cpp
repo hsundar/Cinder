@@ -13433,6 +13433,18 @@ void carry_out(int act) {
             // cinder_prepare_skip_play returns 0 when the live sequence already leads with the
             // queue, so an ordinary skip through an album is one NextTrack and no rebuild.
             run_guarded("carry_out: next", 8, []() {
+                // A BOOK OR A PODCAST: ▷ is 30 s ahead, as in every spoken-word player, not the
+                // next chapter. Asked first, so a queue waiting behind an audiobook does not take
+                // the key; the FFI answers -1 near the chapter's end, and the key goes on to the
+                // next chapter below. Notified before the seek, like the CUE path, so a banked
+                // burst of presses adds up from where the last one landed.
+                const int spoken = cinder_spoken_skip(1);
+                if (spoken >= 0) {
+                    cinder_notify_seek_ms(spoken);
+                    cinder_audio_seek_ms(spoken);
+                    clog_("transport: next -> 30 s ahead (spoken)");
+                    return;
+                }
                 if (cinder_prepare_skip_play()) {
                     play_pending_sequence("skip into queue", PendingSequenceMode::StartNew);
                     clog_("transport: next -> user queue");
@@ -13461,6 +13473,14 @@ void carry_out(int act) {
             // is the proven path (it pauses, seeks and resumes — the engine refuses to seek while
             // streaming), and notify_seek re-anchors the bar so it doesn't drift back for a second.
             run_guarded("carry_out: prev", 8, []() {
+                // A book or a podcast: ◁ is 10 s back (to the chapter's start at most).
+                const int spoken = cinder_spoken_skip(-1);
+                if (spoken >= 0) {
+                    cinder_notify_seek_ms(spoken);
+                    cinder_audio_seek_ms(spoken);
+                    clog_("transport: prev -> 10 s back (spoken)");
+                    return;
+                }
                 // A file with a CUE sheet: the CUE track's start, or the one before, by seeking.
                 const int cue = cinder_cue_skip(-1);
                 if (cue >= 0) {

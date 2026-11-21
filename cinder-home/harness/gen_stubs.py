@@ -37,7 +37,7 @@ ZERO = {'void': None, 'float': '0.0f', 'double': '0.0'}
 
 # Calls whose "nothing to do" answer is not 0. `cinder_cue_skip` returns the ms to seek to, so a 0
 # from a stub read as "seek to the start" and turned every scripted Next and Prev into a rewind.
-DEFAULT_RETURN = {'cinder_cue_skip': '-1'}
+DEFAULT_RETURN = {'cinder_cue_skip': '-1', 'cinder_spoken_skip': '-1'}
 
 # Hand-written in harness.cpp instead of generated. A generated stub returns a scripted int and
 # does nothing else, which is exactly wrong for a call whose ANSWER is in its out-parameters:
