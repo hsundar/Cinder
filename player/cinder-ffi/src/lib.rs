@@ -13781,7 +13781,7 @@ mod tests {
     #[test]
     fn with_the_component_off_the_learning_folder_is_just_music() {
         let lib = build_library_with(&fixture_db_with_books(), None, false);
-        assert!(lib.books.is_empty(), "no book list, so no book button");
+        assert!(lib.books.is_empty(), "no book list, so no BOOKS tab");
         assert_eq!(lib.songs.len(), 6, "the chapters are songs");
         assert_eq!(lib.album_count(), 4, "and the books are albums");
         assert_eq!(lib.artists.len(), 3, "and the author is an artist");

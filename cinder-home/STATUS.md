@@ -54,8 +54,10 @@
 >   installer leaves `/data/cinder/audiobooks_on`; unticked, nothing is set apart and `LEARNING` is
 >   ordinary music.
 > - **A `LEARNING` folder is a book shelf.** Each folder that directly holds audio files is a book;
->   its files are the chapters. The Library header then reads **Music**; a tap on it opens the
->   Audiobooks list, which reads **Books** in the same place and returns on a tap; a tap plays the book from the saved chapter at the saved position. Every book
+>   its files are the chapters. The Library's tab strip then has a **BOOKS** tab after PLAYLISTS
+>   (2026-11-20; it replaced a Music/Books switch on the title, which nothing marked as a control).
+>   BOOKS shows the Audiobooks list under the same header and strip; any other tab returns to the
+>   Library on it. A tap on a book plays it from the saved chapter at the saved position. Every book
 >   keeps its own place in `/contents/cinder_books.tsv`.
 > - **Audiobooks are out of the music lists** (Songs, Albums, Artists, Folders, search, shuffles).
 > - **The seek after the hand-over is new on this path** (`cinder_take_play_seek_ms`, the boot

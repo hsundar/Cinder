@@ -21,6 +21,17 @@ pub enum Tab {
     Playlists,
 }
 
+/// One label of the Library's tab strip: a list tab, or BOOKS or FOLDERS, which each show a
+/// screen of their own (the Audiobooks list, the folder browser) under the same strip.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Slot {
+    Tab(Tab),
+    /// The Audiobooks list. In the strip while the library has books (the Audiobooks option).
+    Books,
+    /// The folder browser. In the strip while Settings ▸ Folders tab is on.
+    Folders,
+}
+
 /// Bottom y of the scrollable list area — the top of the Now Playing return bar, which is pinned
 /// to the bottom of every library screen. Derived, not a literal, so the list and the bar can't
 /// overlap if the bar's height changes.
@@ -1792,15 +1803,19 @@ pub fn tab_hit_bottom(hide: i32) -> i32 {
 /// left half selected SONGS; "ARTISTS" (≈176..247) and "PLAYLISTS" (≈269..360) were off in the
 /// same direction. Deriving both from one function fixes that — and keeps it fixed at any UI
 /// text scale, where fixed thresholds would drift much further.
-/// The tab strip's labels: the four tabs, then FOLDERS (`None`) when Settings ▸ Folders tab is on.
-/// FOLDERS is a link, not a tab: it opens the folder browser instead of switching the list.
-fn strip_labels(folders: bool) -> Vec<(Option<Tab>, &'static str)> {
+/// The tab strip's labels: the four tabs, then BOOKS while the library has audiobooks, then
+/// FOLDERS when Settings ▸ Folders tab is on. BOOKS shows the Audiobooks list under this same
+/// strip; FOLDERS opens the folder browser.
+fn strip_labels(folders: bool, books: bool) -> Vec<(Slot, &'static str)> {
     let mut v: Vec<_> = TABS
         .iter()
-        .map(|&(t, l)| (Some(t), crate::i18n::text(l)))
+        .map(|&(t, l)| (Slot::Tab(t), crate::i18n::text(l)))
         .collect();
+    if books {
+        v.push((Slot::Books, crate::i18n::text("BOOKS")));
+    }
     if folders {
-        v.push((None, crate::i18n::text("FOLDERS")));
+        v.push((Slot::Folders, crate::i18n::text("FOLDERS")));
     }
     v
 }
@@ -1808,8 +1823,8 @@ fn strip_labels(folders: bool) -> Vec<(Option<Tab>, &'static str)> {
 /// The strip's text size and `(slot, x, width)` per label. Four labels fit at 14 px with 22 px
 /// gaps; five may not (Big view, long translations), so the gaps close to 12 and then the text
 /// shrinks until the strip fits between the 22 px margins.
-fn strip_fit(f: &FontSet, folders: bool) -> (f32, Vec<(Option<Tab>, f32, f32)>) {
-    let labels = strip_labels(folders);
+fn strip_fit(f: &FontSet, folders: bool, books: bool) -> (f32, Vec<(Slot, f32, f32)>) {
+    let labels = strip_labels(folders, books);
     let st = |size| {
         sty(
             Family::Mono,
@@ -1844,14 +1859,16 @@ fn strip_fit(f: &FontSet, folders: bool) -> (f32, Vec<(Option<Tab>, f32, f32)>) 
     (size, out)
 }
 
-pub fn tab_layout(f: &FontSet, folders: bool) -> Vec<(Option<Tab>, f32, f32)> {
-    strip_fit(f, folders).1
+pub fn tab_layout(f: &FontSet, folders: bool, books: bool) -> Vec<(Slot, f32, f32)> {
+    strip_fit(f, folders, books).1
 }
 
-fn tabs(c: &mut Canvas, t: &Theme, f: &FontSet, y0: i32, active: Tab, folders: bool) -> i32 {
-    let (size, layout) = strip_fit(f, folders);
-    for ((tab, x, w), (_, label)) in layout.into_iter().zip(strip_labels(folders)) {
-        let on = tab == Some(active);
+/// Draw the strip under a header ending at `y0`, `active` underlined. The Library draws it, and so
+/// does the Audiobooks list, which is the BOOKS tab of the same strip.
+pub(crate) fn tabs(c: &mut Canvas, t: &Theme, f: &FontSet, y0: i32, active: Slot, folders: bool, books: bool) -> i32 {
+    let (size, layout) = strip_fit(f, folders, books);
+    for ((slot, x, w), (_, label)) in layout.into_iter().zip(strip_labels(folders, books)) {
+        let on = slot == active;
         let st = sty(
             Family::Mono,
             Weight::Regular,
@@ -2248,13 +2265,9 @@ pub fn render(
     // before the first and the caption starts after the last.
     let (vx0, vx1) = view_button_x(search);
     let x1 = controls_x1(search);
-    // With audiobooks the title gives way to the Music/Books switch.
+    // Audiobooks have their own tab, BOOKS, in the strip below.
     let books = !lib.books.is_empty();
-    let title = if books {
-        ""
-    } else {
-        crate::i18n::text("Library")
-    };
+    let title = crate::i18n::text("Library");
     // The title may come to 8 px short of the button's zone: its icon is centred in it, so that
     // still leaves a 20 px gap to the drawn glyph.
     let y0 = if has_sort_chip(tab) {
@@ -2265,11 +2278,8 @@ pub fn render(
     if search {
         crate::icons::search(c, ((SEARCH_X0 + SEARCH_X1) / 2) as f32, 62.0, 24.0, t.dim);
     }
-    if books {
-        crate::chrome::mode_switch(c, t, f, false);
-    }
     view_icon(c, ((vx0 + vx1) / 2) as f32, 62.0, view_of(lib, tab), t.dim);
-    let yt = tabs(c, t, f, y0, tab, lib.folders_tab);
+    let yt = tabs(c, t, f, y0, Slot::Tab(tab), lib.folders_tab, books);
     let total = row_count(tab, lib);
     band_block(c, t, f, tab, lib, yt, hide);
 

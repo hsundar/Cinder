@@ -159,8 +159,8 @@ pub enum Screen {
     /// holding which is open. An OPT-IN component: the Menu row only exists when the installer left
     /// `/data/cinder/sensme_on`. See `sensme.rs`.
     SensMe,
-    /// Audiobooks — the books under `LEARNING`, one row per folder, opened from the book button in
-    /// the Library's header. Tapping a row plays the book from where the listener left it. See
+    /// Audiobooks — the books under `LEARNING`, one row per folder: the Library's BOOKS tab, under
+    /// the Library's own strip. Tapping a row plays the book from where the listener left it. See
     /// `audiobooks.rs`.
     Books,
     /// Track information — Sony's "Detailed Information". Pushed by tapping the title/artist/codec
@@ -1113,10 +1113,9 @@ fn tab_from_token(t: &str) -> Tab {
 }
 
 /// Which slot of the library's tab strip is at screen-x `x`, using the strip as it was last drawn?
-/// `Some(None)` is the FOLDERS link. Splits the gaps between labels down the middle, so no pixel
-/// of the strip is dead. `None` only when nothing has been rendered yet, which a real tap can't
-/// precede.
-fn tab_zone_at(zones: &[(Option<Tab>, f32, f32)], x: i32) -> Option<Option<Tab>> {
+/// Splits the gaps between labels down the middle, so no pixel of the strip is dead. `None` only
+/// when nothing has been rendered yet, which a real tap can't precede.
+fn tab_zone_at(zones: &[(library::Slot, f32, f32)], x: i32) -> Option<library::Slot> {
     let xf = x as f32;
     for (i, &(tab, tx, tw)) in zones.iter().enumerate() {
         let left = if i == 0 {
@@ -1956,7 +1955,7 @@ pub struct App {
     /// The library tab strip as last DRAWN: (tab, x, width). Taps resolve through this, so the
     /// zones always match the labels on screen. (`render` takes `&self`, hence the interior
     /// mutability — the same render-mirrors-hit rule the lists already follow.)
-    lib_tab_zones: std::cell::RefCell<Vec<(Option<Tab>, f32, f32)>>,
+    lib_tab_zones: std::cell::RefCell<Vec<(library::Slot, f32, f32)>>,
     /// Object ids of the Up Next rows the last render actually drew, in drawn order. The window
     /// auto-scrolls to follow playback, so the renderer (which knows `np`) publishes this for the
     /// hit test instead of `tap` trying to recompute it.
@@ -4496,8 +4495,8 @@ impl App {
         self.push(Screen::Books);
     }
 
-    /// The Books side of the switch on the Library: the Audiobooks list in the Library's place, so
-    /// Back leaves for where the Library was opened from.
+    /// The BOOKS tab on the Library: the Audiobooks list in the Library's place, so Back leaves for
+    /// where the Library was opened from.
     fn library_to_books(&mut self) {
         self.books_scroll_px = 0;
         self.fling_v = 0.0;
@@ -4507,7 +4506,16 @@ impl App {
         self.note_browse();
     }
 
-    /// The Music side of the switch on the Audiobooks list: the Library in its place.
+    /// Switch the Library's list to `tab`, from its top.
+    fn show_lib_tab(&mut self, tab: Tab) {
+        self.lib_tab = tab;
+        self.lib_idx = 0;
+        self.lib_scroll_px = 0;
+        self.fling_v = 0.0;
+        self.album_expanded = None;
+    }
+
+    /// A list tab tapped on the Audiobooks list: the Library in its place.
     fn books_to_music(&mut self) {
         if let Some(top) = self.stack.last_mut() {
             *top = Screen::Library;
@@ -5645,8 +5653,16 @@ impl App {
             },
             Screen::Folders => self.tap_folders(y),
             Screen::Books => {
-                if !self.lib.books.is_empty() && crate::chrome::mode_hit(x, y) {
-                    self.books_to_music();
+                // The strip: another tab goes back to the Library on it, in this screen's place.
+                if !self.lib.books.is_empty() && (library::TAB_TOP..library::TAB_BOT).contains(&y) {
+                    match self.tab_at_cached(x) {
+                        Some(library::Slot::Tab(tab)) => {
+                            self.books_to_music();
+                            self.show_lib_tab(tab);
+                        }
+                        Some(library::Slot::Folders) => self.open_folders(),
+                        Some(library::Slot::Books) | None => {}
+                    }
                     return vec![];
                 }
                 self.tap_books(y)
@@ -6618,10 +6634,6 @@ impl App {
             self.open_search();
             return vec![];
         }
-        if !self.lib.books.is_empty() && crate::chrome::mode_hit(x, y) {
-            self.library_to_books();
-            return vec![];
-        }
         if library::hit_view_button(x, y, self.search_enabled) {
             self.cycle_lib_view();
             return vec![];
@@ -6645,19 +6657,14 @@ impl App {
             // drawn at x≈94..154, so tapping its left half selected SONGS, and the same drift ran
             // down the rest of the strip. Fixed thresholds could not have followed the UI scale
             // either. See `library::tab_layout`.
-            let Some(slot) = self.tab_at_cached(x) else {
-                return vec![];
-            };
-            // FOLDERS (Settings ▸ Folders tab) opens the folder browser; Back comes back here.
-            let Some(tab) = slot else {
-                self.open_folders();
-                return vec![];
-            };
-            self.lib_tab = tab;
-            self.lib_idx = 0;
-            self.lib_scroll_px = 0;
-            self.fling_v = 0.0;
-            self.album_expanded = None;
+            match self.tab_at_cached(x) {
+                Some(library::Slot::Tab(tab)) => self.show_lib_tab(tab),
+                // BOOKS: the Audiobooks list, in the Library's place under the same strip.
+                Some(library::Slot::Books) => self.library_to_books(),
+                // FOLDERS (Settings ▸ Folders tab) opens the folder browser; Back comes back here.
+                Some(library::Slot::Folders) => self.open_folders(),
+                None => {}
+            }
             return vec![];
         }
         // The genre filter strip, above the list. Checked before the rows for the same reason the
@@ -8492,10 +8499,10 @@ impl App {
     /// Which library tab is at screen-x `x`, from the strip as last rendered. Falls back to an
     /// even quarter split if nothing has been drawn yet (unreachable in practice — a tap cannot
     /// precede the first paint).
-    fn tab_at_cached(&self, x: i32) -> Option<Option<Tab>> {
+    fn tab_at_cached(&self, x: i32) -> Option<library::Slot> {
         let zones = self.lib_tab_zones.borrow();
         if zones.is_empty() {
-            return Some(Some(match x * 4 / crate::canvas::W as i32 {
+            return Some(library::Slot::Tab(match x * 4 / crate::canvas::W as i32 {
                 0 => Tab::Songs,
                 1 => Tab::Albums,
                 2 => Tab::Artists,
@@ -11728,7 +11735,7 @@ impl App {
             Screen::Library => {
                 // Record the tab strip exactly as drawn, so `tap` hits the labels the user sees.
                 *self.lib_tab_zones.borrow_mut() =
-                    crate::library::tab_layout(fonts, self.lib.folders_tab);
+                    crate::library::tab_layout(fonts, self.lib.folders_tab, !self.lib.books.is_empty());
                 crate::library::render(
                     c,
                     &theme,
@@ -11889,14 +11896,19 @@ impl App {
                 self.folder_scroll_px,
                 self.sbar_active(),
             ),
-            Screen::Books => crate::audiobooks::render(
+            Screen::Books => {
+                // The Library's strip is drawn here too (BOOKS is its tab): record it the same way.
+                *self.lib_tab_zones.borrow_mut() =
+                    crate::library::tab_layout(fonts, self.lib.folders_tab, !self.lib.books.is_empty());
+                crate::audiobooks::render(
                 c,
                 &theme,
                 fonts,
                 &self.lib,
                 self.books_scroll_px,
                 self.sbar_active(),
-            ),
+                )
+            }
             Screen::SensMe => crate::sensme::render(
                 c,
                 &theme,
@@ -19930,38 +19942,59 @@ mod tests {
         }
     }
 
-    /// With audiobooks the Library header carries a switch spelling "Music"; a tap opens the Books
-    /// list, where it spells "Books" and a tap goes back to the Library, on the tab it was left on.
+    /// Tap the strip label `slot` as it is drawn now (the screen is drawn first, as on the player).
+    fn tap_slot(a: &mut App, slot: library::Slot) -> Vec<Action> {
+        let fonts = crate::text::FontSet::load();
+        a.render(&mut Canvas::new(), &fonts, &bare_np());
+        let (_, x, w) = *a
+            .lib_tab_zones
+            .borrow()
+            .iter()
+            .find(|z| z.0 == slot)
+            .unwrap_or_else(|| panic!("{slot:?} is not in the strip"));
+        a.tap((x + w / 2.0) as i32, library::TAB_TOP + 10)
+    }
+
+    /// With audiobooks the Library's strip has a BOOKS tab; it shows the Audiobooks list under the
+    /// same strip, and a list tab there goes back to the Library, on that tab.
     #[test]
-    fn the_music_books_switch_moves_between_the_library_and_the_audiobooks() {
+    fn the_books_tab_moves_between_the_library_and_the_audiobooks() {
+        let _scale = lock_scale();
         for search in [false, true] {
             let mut a = unlocked();
             a.search_enabled = search;
             a.set_library(books_lib(3));
             a.push_for_test(Screen::Library);
-            a.lib_tab = Tab::Artists;
-            let (x0, x1) = crate::chrome::mode_zone();
-            assert_eq!(
-                a.tap((x0 + x1) / 2, 62),
-                vec![],
-                "opening a list plays nothing"
-            );
+            a.lib_tab = Tab::Songs;
+            assert_eq!(tap_slot(&mut a, library::Slot::Books), vec![], "opening a list plays nothing");
             assert_eq!(a.current(), Screen::Books, "search {search}");
-            a.tap((x0 + x1) / 2, 62);
+            tap_slot(&mut a, library::Slot::Books);
+            assert_eq!(a.current(), Screen::Books, "BOOKS on the Books list stays");
+            tap_slot(&mut a, library::Slot::Tab(Tab::Artists));
             assert_eq!(a.current(), Screen::Library);
-            assert_eq!(a.lib_tab, Tab::Artists, "the tab is where it was");
+            assert_eq!(a.lib_tab, Tab::Artists, "on the tab tapped");
             a.press(Button::Back);
-            assert_eq!(
-                a.current(),
-                Screen::NowPlaying,
-                "the switch left no history"
-            );
+            assert_eq!(a.current(), Screen::NowPlaying, "the tabs left no history");
         }
+    }
+
+    /// FOLDERS stays reachable from the Books list when both are in the strip.
+    #[test]
+    fn folders_opens_from_the_books_tab_too() {
+        let _scale = lock_scale();
+        let mut a = unlocked();
+        a.set_library(books_lib(2));
+        a.set_opt(Opt::FoldersTab, true);
+        a.push_for_test(Screen::Library);
+        tap_slot(&mut a, library::Slot::Books);
+        tap_slot(&mut a, library::Slot::Folders);
+        assert_eq!(a.current(), Screen::Folders);
     }
 
     /// The Library button on Now Playing returns to whichever of Music and Books you last browsed.
     #[test]
     fn the_now_playing_library_button_opens_the_last_browsed_side() {
+        let _scale = lock_scale();
         let tap_library_button = |a: &mut App| {
             a.tap(
                 crate::now_playing::TOOLBAR_CX[0],
@@ -19972,41 +20005,42 @@ mod tests {
         a.set_library(books_lib(3));
         tap_library_button(&mut a);
         assert_eq!(a.current(), Screen::Library, "music is the default");
-        let (x0, x1) = crate::chrome::mode_zone();
-        a.tap((x0 + x1) / 2, 62);
+        tap_slot(&mut a, library::Slot::Books);
         assert_eq!(a.current(), Screen::Books);
         a.press(Button::Back);
         assert_eq!(a.current(), Screen::NowPlaying);
         tap_library_button(&mut a);
         assert_eq!(a.current(), Screen::Books, "back where the books were");
-        a.tap((x0 + x1) / 2, 62);
+        tap_slot(&mut a, library::Slot::Tab(Tab::Songs));
         assert_eq!(a.current(), Screen::Library);
         a.press(Button::Back);
         tap_library_button(&mut a);
         assert_eq!(a.current(), Screen::Library, "and back to music again");
     }
 
-    /// Without audiobooks there is no switch: those taps are the title's and must open nothing.
+    /// Without audiobooks there is no BOOKS tab, and the Library keeps its title.
     #[test]
-    fn without_audiobooks_the_library_header_has_no_switch() {
+    fn without_audiobooks_there_is_no_books_tab() {
+        let _scale = lock_scale();
         let mut a = unlocked();
         a.set_library(books_lib(0));
         a.push_for_test(Screen::Library);
-        let (x0, x1) = crate::chrome::mode_zone();
-        a.tap((x0 + x1) / 2, 62);
-        assert_eq!(a.current(), Screen::Library);
+        a.render(&mut Canvas::new(), &crate::text::FontSet::load(), &bare_np());
+        assert!(!a.lib_tab_zones.borrow().iter().any(|z| z.0 == library::Slot::Books));
+        assert_eq!(a.lib_tab_zones.borrow().len(), 4);
     }
 
-    /// A pinned Audiobooks list has Library under it no longer, so Music on it still lands on the
-    /// Library.
+    /// A pinned Audiobooks list has Library under it no longer, so a list tab on it still lands
+    /// on the Library.
     #[test]
-    fn music_on_a_restored_audiobooks_pin_lands_on_the_library() {
+    fn a_tab_on_a_restored_audiobooks_pin_lands_on_the_library() {
+        let _scale = lock_scale();
         let mut a = unlocked();
         a.set_library(books_lib(2));
         a.push_for_test(Screen::Books);
-        let (m0, m1) = crate::chrome::mode_zone();
-        a.tap((m0 + m1) / 2, 62);
+        tap_slot(&mut a, library::Slot::Tab(Tab::Albums));
         assert_eq!(a.current(), Screen::Library);
+        assert_eq!(a.lib_tab, Tab::Albums);
     }
 
     /// #51: each of Big view's extras grows what it names and nothing else, and neither does
@@ -20159,29 +20193,26 @@ mod tests {
         );
     }
 
-    /// Both screens draw the switch, each spelling its own word.
+    /// Both screens draw the strip: the Library gains BOOKS when there are books, and the two
+    /// screens underline different labels.
     #[test]
-    fn both_screens_draw_the_switch_with_their_own_word() {
+    fn both_screens_draw_the_strip_with_their_own_tab_underlined() {
         let _scale = lock_scale();
         let fonts = crate::text::FontSet::load();
-        let band = |screen: Screen, books: usize| {
+        let strip = |screen: Screen, books: usize| {
             let mut a = unlocked();
             a.set_library(books_lib(books));
             a.go_for_preview(screen);
             let mut c = Canvas::new();
             a.render(&mut c, &fonts, &bare_np());
             let rgb = c.to_rgb_bytes();
-            let (x0, x1) = crate::chrome::mode_zone();
-            (46..90usize)
-                .flat_map(|y| {
-                    rgb[(y * 480 + x0 as usize) * 3..(y * 480 + x1 as usize) * 3].to_vec()
-                })
+            (library::TAB_TOP as usize..library::TABS_BOTTOM as usize)
+                .flat_map(|y| rgb[y * 480 * 3..(y + 1) * 480 * 3].to_vec())
                 .collect::<Vec<u8>>()
         };
-        let lib = band(Screen::Library, 3);
-        let books = band(Screen::Books, 3);
-        assert_ne!(lib, band(Screen::Library, 0), "the Library gains a switch");
-        assert_ne!(lib, books, "the word differs");
+        let lib = strip(Screen::Library, 3);
+        assert_ne!(lib, strip(Screen::Library, 0), "the Library gains BOOKS");
+        assert_ne!(lib, strip(Screen::Books, 3), "a different tab is underlined");
     }
 
     /// A tap on a row asks the shell to play THAT book.
@@ -26541,10 +26572,10 @@ mod tests {
         a.lib_tab = Tab::Songs;
         let bottom = library::tab_hit_bottom(0);
         assert!(bottom > library::TAB_BOT && bottom < library::library_shuffle_band().1);
-        let zones = library::tab_layout(&FontSet::load(), false);
+        let zones = library::tab_layout(&FontSet::load(), false, false);
         let x = zones
             .iter()
-            .find(|z| z.0 == Some(Tab::Albums))
+            .find(|z| z.0 == library::Slot::Tab(Tab::Albums))
             .map(|z| (z.1 + z.2 / 2.0) as i32)
             .unwrap();
         *a.lib_tab_zones.borrow_mut() = zones;
@@ -26657,7 +26688,7 @@ mod tests {
             .flat_map(|&p| [(p, false), (p, true)])
         {
             crate::text::set_scale_pct(pct);
-            let zones = library::tab_layout(&fonts, folders);
+            let zones = library::tab_layout(&fonts, folders, false);
             assert_eq!(zones.len(), if folders { 5 } else { 4 });
             // The strip fits between the 22 px margins, FOLDERS and all.
             let (_, lx, lw) = zones[zones.len() - 1];
@@ -26692,16 +26723,15 @@ mod tests {
         a.go(Screen::Library);
         let fonts = FontSet::load();
         a.render(&mut Canvas::new(), &fonts, &bare_np());
-        assert_eq!(
-            a.lib_tab_zones.borrow().len(),
-            4,
-            "off: the four tabs, nothing else"
+        assert!(
+            !a.lib_tab_zones.borrow().iter().any(|z| z.0 == library::Slot::Folders),
+            "off: no FOLDERS in the strip"
         );
 
         a.set_opt(Opt::FoldersTab, true);
         a.render(&mut Canvas::new(), &fonts, &bare_np());
         let (slot, x, w) = *a.lib_tab_zones.borrow().last().unwrap();
-        assert_eq!(slot, None, "FOLDERS is the last slot");
+        assert_eq!(slot, library::Slot::Folders, "FOLDERS is the last slot");
         let tab = a.lib_tab;
         a.tap((x + w / 2.0) as i32, library::TAB_TOP + 10);
         assert_eq!(a.current(), Screen::Folders);

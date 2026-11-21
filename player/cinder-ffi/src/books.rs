@@ -35,7 +35,7 @@ const HEADER: &str = "#CINDER-BOOKS/1\n# folder\tchapter\tposition_ms\tfinished\
 
 /// The installer's Audiobooks option leaves this flag (`install_cinderhome.sh`), a file in
 /// `/data/cinder` — machine-written state, off the volume a PC can edit. Without it nothing is set
-/// apart: the files under `LEARNING` stay in the music lists and the Library has no book button.
+/// apart: the files under `LEARNING` stay in the music lists and the Library has no BOOKS tab.
 pub const FLAG: &str = "/data/cinder/audiobooks_on";
 
 /// Is the component on: does `flag` exist?

@@ -185,6 +185,7 @@ fn simplifiedchinese(source: &str) -> Option<&'static str> {
         "BATTERY" => Some("电池"),
         "BLUETOOTH" => Some("蓝牙"),
         "BLUETOOTH IS OFF · TURN IT ON FIRST" => Some("蓝牙已关闭，请先开启"),
+        "BOOKS" => Some("图书"),
         "BOTH CHANNELS" => Some("左右声道"),
         "BOTTOM STRIP" => Some("底部播放栏"),
         "BRIGHTNESS" => Some("亮度"),

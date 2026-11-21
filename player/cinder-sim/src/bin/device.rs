@@ -230,7 +230,12 @@ fn main() {
     } else {
         App::new()
     };
-    app.set_library(big_library());
+    let mut lib = big_library();
+    // `--books`: the sample audiobooks too, so the Library's strip has its BOOKS tab.
+    if std::env::args().any(|a| a == "--books") {
+        lib.books = cinder_ui::model::Library::sample().books;
+    }
+    app.set_library(lib);
     // Something playing, so the screens that are about the playing song have one: Track
     // information's rows (with its Rating row) and a play context for the stars to rate.
     let first_album = app

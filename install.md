@@ -240,7 +240,7 @@ removes something the player cannot do without (`components.conf` explains the d
 | Charger details on the battery screen (`battery`) | on | The charger's own readings: charging state, faults, charge current and voltage | The battery screen still shows level, health, voltage and temperatures |
 | Library search (`search`) | **off** | A search button in the Library | — (new, so off for now) |
 | SensMe channels (`sensme`) | **off** | Play the library by mood, like radio stations. Needs your music analysed on a PC first, by [Flint](https://github.com/superwilso/flint) or Sony's Music Center | — |
-| Audiobooks (`audiobooks`) | **off** | A book button in the Library, beside search, that opens the books in a `LEARNING` folder on the player or the SD card, one folder per book. Each book remembers where you stopped and carries on from there. See [Audiobooks](#audiobooks) | The files in `LEARNING` are ordinary music, as before (new, so off for now) |
+| Audiobooks (`audiobooks`) | **off** | A BOOKS tab in the Library, beside Songs, Albums, Artists and Playlists, that lists the books in a `LEARNING` folder on the player or the SD card, one folder per book. Each book remembers where you stopped and carries on from there. See [Audiobooks](#audiobooks) | The files in `LEARNING` are ordinary music, as before (new, so off for now) |
 | Scrobble log (`scrobble`) | on | Logs the songs you finish to `.scrobbler.log` for a Last.fm uploader | Nothing logged; an existing log is kept. **Leave it on with Wampy's scrobbler**: Cinder steps aside while that one runs, so nothing is logged twice |
 | Headphone volume curve (`voltable`) | Sony standard | How much each volume step changes the loudness. See [The volume curve tables](#the-volume-curve-tables) | — |
 | Sound signature (`signature`) | Sony standard | Walkman One's Plus modes, to compare by ear. See [below](#the-sound-signature) | — |
@@ -414,8 +414,8 @@ Name the files so they sort in reading order (`01`, `02`, … or `Chapter 1`, `C
 count as numbers, so `Chapter 2` comes before `Chapter 10`). The folder that holds the files is the
 book, and the folder above it, if it is not `LEARNING` itself, is the author.
 
-The Library then has a book button, between the search button and the sort control, that opens the
-list of books. Tap a book to play it from where you stopped: the chapter and the second are
+The Library then has a BOOKS tab, after Songs, Albums, Artists and Playlists, that lists the
+books. Tap a book to play it from where you stopped: the chapter and the second are
 remembered for each book on its own, so two books by one author never disturb each other. A book
 you reach the last ten seconds of counts as finished and starts again from the first chapter.
 

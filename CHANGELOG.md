@@ -31,6 +31,12 @@ level the commit history supports; from `v0.1.6` onward, entries are written as 
 
 ### Changed
 
+- **Audiobooks have a BOOKS tab.** The Library's strip reads SONGS ALBUMS ARTISTS PLAYLISTS BOOKS
+  when the library has audiobooks, and BOOKS shows the books under the same header and strip; any
+  other tab goes back to the Library on it. It replaces the Music/Books switch on the Library's
+  title, which nothing marked as something to tap. *Device-unverified* (host tests and the
+  simulator).
+
 - **The first screen appears sooner still.** The player's fonts are now read in the background,
   and the first screen waits only for the ones it shows: the renderer is ready in about 50 ms
   instead of 800 ms, and the first frame arrives 0.5–0.9 s after Cinder starts.

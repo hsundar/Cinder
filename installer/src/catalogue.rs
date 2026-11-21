@@ -799,7 +799,7 @@ preload | CINDER_PRELOAD | bool | 0 | Preload
         assert!(conf_text(&comps, "stable").contains("CINDER_AUDIOBOOKS=1"));
         // What the person installing reads says what they get and what it costs them.
         let text = comps[i].explain("on", "off");
-        assert!(text.contains("book button"), "{text}");
+        assert!(text.contains("BOOKS tab"), "{text}");
         assert!(text.contains("no longer appear among your songs"), "{text}");
     }
 

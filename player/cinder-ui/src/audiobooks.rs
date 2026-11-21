@@ -1,5 +1,5 @@
-//! The Audiobooks screen — one row per book (a folder under `LEARNING`), opened from the book
-//! button in the Library's header.
+//! The Audiobooks screen — one row per book (a folder under `LEARNING`): the Library's BOOKS tab,
+//! drawn under the Library's own header and tab strip.
 //!
 //! A row says which book it is and where the listener got to; tapping it plays from that place
 //! (`Action::PlayBook`). That is the whole screen: no chapter list, no speed control. A book keeps
@@ -15,7 +15,8 @@ use crate::theme::Theme;
 use crate::widgets::{hline, sty};
 use crate::{icons, Canvas};
 
-pub const TOP: i32 = crate::chrome::HEADER_BOTTOM;
+/// The list starts under the Library's tab strip, which this screen shares.
+pub const TOP: i32 = crate::library::TABS_BOTTOM + 1;
 #[allow(non_snake_case)]
 pub fn ROW_H() -> i32 {
     crate::scale::TRACK_ROW_H()
@@ -144,23 +145,21 @@ pub fn render(
     let scroll = scroll_px.clamp(0, max_scroll_px(lib));
     c.fill(t.bg);
     let sub = subtitle(lib);
-    // With books the title is the Music/Books switch, as on the Library; a list with none keeps
-    // its own title.
+    // The Library's header and strip, with BOOKS underlined: this is that tab. A list with no
+    // books (the strip has no BOOKS then) keeps a title of its own.
     let books = !lib.books.is_empty();
     let y0 = crate::chrome::header(
         c,
         t,
         f,
-        if books {
-            ""
-        } else {
-            crate::i18n::text("Audiobooks")
-        },
-        books.then_some(&*sub),
+        crate::i18n::text(if books { "Library" } else { "Audiobooks" }),
+        Some(&*sub),
     );
-    if books {
-        crate::chrome::mode_switch(c, t, f, true);
-    }
+    let y0 = if books {
+        crate::library::tabs(c, t, f, y0, crate::library::Slot::Books, lib.folders_tab, true)
+    } else {
+        y0
+    };
     c.set_clip_y(y0, LIST_BOTTOM);
 
     if lib.books.is_empty() {
