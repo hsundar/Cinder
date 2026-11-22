@@ -1236,41 +1236,109 @@ pub fn home_chip_at(x: i32, y: i32, rows: usize) -> Option<usize> {
     crate::kit::chip_at(crate::menu::HOMES.len(), home_chips_top(rows), x, y)
 }
 
-/// Home: what is playing, then the destinations as large lowercase words.
+/// What Home's top line says: the song and its artist, how far in, and whether it is playing.
+/// `None` when nothing is loaded.
+pub struct HomeNow<'a> {
+    pub title: &'a str,
+    pub artist: &'a str,
+    /// 0..1.
+    pub progress: f32,
+    pub playing: bool,
+}
+
+/// Home's live word beside a destination: the podcasts' new episodes, the book you are in.
+/// Empty for none. Counted from the library alone, so it is right the moment Home draws.
+pub fn home_hint(lib: &Library, podcasts: bool) -> String {
+    if podcasts {
+        let new: usize = shelf(lib, true).iter().map(|&i| unheard(&lib.books[i])).sum();
+        if new == 0 {
+            String::new()
+        } else {
+            crate::ui_format!("{} new", new)
+        }
+    } else {
+        let started: Vec<&crate::model::BookRow> = shelf(lib, false)
+            .into_iter()
+            .map(|i| &lib.books[i])
+            .filter(|b| b.in_progress())
+            .collect();
+        match started.as_slice() {
+            [] => String::new(),
+            [b] => b.title.clone(),
+            many => crate::ui_format!("{} started", many.len()),
+        }
+    }
+}
+
+/// Home: what is playing, then the destinations as large lowercase words, each with its live
+/// hint (`MenuItem::sub`, empty for none) in the accent after it when there is room.
 pub fn home(
     c: &mut Canvas,
     t: &Theme,
     f: &FontSet,
-    strip: &str,
+    now: Option<&HomeNow>,
     items: &[crate::menu::MenuItem],
     home: usize,
     scroll: i32,
 ) {
     c.fill(t.bg);
-    let s = st(Weight::Regular, 18.0, t.dim);
-    let line = crate::widgets::fit(f, strip, &s, (W as f32) - 2.0 * LEFT);
-    text::draw(
-        c,
-        f,
-        LEFT,
-        (home_strip_bottom() - px(14.0)) as f32,
-        &line,
-        &s,
-    );
+    let room = (W as f32) - 2.0 * LEFT;
+    let base = (home_strip_bottom() - px(16.0)) as f32;
+    match now {
+        Some(n) => {
+            // "now playing" (or "paused") small in the accent, the song in ink, the artist dim,
+            // and a hairline of progress under it: the whole band is the tap to Now Playing.
+            let lead = st(Weight::Regular, 15.0, t.acc);
+            let word = if n.playing {
+                crate::i18n::text("now playing")
+            } else {
+                crate::i18n::text("paused")
+            };
+            let lw = text::measure(f, word, &lead);
+            text::draw(c, f, LEFT, base, word, &lead);
+            let x = LEFT + lw + text::scaled(10.0);
+            let song = st(Weight::Regular, 18.0, t.ink);
+            let title = crate::widgets::fit(f, n.title, &song, room - (x - LEFT));
+            let tw = text::measure(f, &title, &song);
+            text::draw(c, f, x, base, &title, &song);
+            if !n.artist.is_empty() {
+                let by = st(Weight::Regular, 18.0, t.dim);
+                let gap = text::scaled(8.0);
+                let left = room - (x - LEFT) - tw - gap;
+                if left > text::scaled(40.0) {
+                    let a = crate::widgets::fit(f, n.artist, &by, left);
+                    text::draw(c, f, x + tw + gap, base, &a, &by);
+                }
+            }
+            let y = home_strip_bottom() - px(6.0);
+            let w = room as i32;
+            crate::widgets::fill_rect(c, LEFT as i32, y, w, 2, t.line);
+            let done = (w as f32 * n.progress.clamp(0.0, 1.0)) as i32;
+            crate::widgets::fill_rect(c, LEFT as i32, y, done, 2, t.acc);
+        }
+        None => {
+            let s = st(Weight::Regular, 18.0, t.dim);
+            text::draw(c, f, LEFT, base, crate::i18n::text("nothing playing"), &s);
+        }
+    }
     c.set_clip_y(home_top(), crate::H as i32);
     c.bleed_x();
+    let hint = st(Weight::Regular, 18.0, t.acc);
     for (i, m) in items.iter().enumerate() {
         let y = home_top() + i as i32 * home_row_h() - scroll;
         let col = if m.active { t.acc } else { t.ink };
         let word = crate::i18n::text(m.label).to_lowercase();
-        text::draw(
-            c,
-            f,
-            LEFT,
-            (y + px(50.0)) as f32,
-            &word,
-            &st(Weight::Light, 46.0, col),
-        );
+        let big = st(Weight::Light, 46.0, col);
+        let base = (y + px(50.0)) as f32;
+        text::draw(c, f, LEFT, base, &word, &big);
+        if !m.sub.is_empty() {
+            let x = LEFT + text::measure(f, &word, &big) + text::scaled(12.0);
+            let left = W as f32 - LEFT - x;
+            if left >= text::scaled(48.0) {
+                let h = crate::widgets::fit(f, m.sub, &hint, left);
+                text::draw(c, f, x, base, &h, &hint);
+            }
+        }
     }
     c.clear_clip_x();
     let rows = items.len();
@@ -1385,6 +1453,38 @@ mod tests {
             }),
             0
         );
+    }
+
+    #[test]
+    fn home_hints_count_new_episodes_and_name_the_book_you_are_in() {
+        use crate::model::BookRow;
+        let mut lib = Library::sample();
+        let show = |n: usize, chapter: usize| BookRow {
+            author: "Podcasts".into(),
+            dir: "/contents/LEARNING/Podcasts/S".into(),
+            chapters: vec![Default::default(); n],
+            chapter,
+            ..Default::default()
+        };
+        let book = |title: &str, chapter: usize, finished: bool| BookRow {
+            title: title.into(),
+            dir: format!("/contents/LEARNING/{title}"),
+            paths: vec!["01.mp3".into()],
+            chapters: vec![Default::default(); 3],
+            chapter,
+            finished,
+            ..Default::default()
+        };
+        lib.books = vec![show(4, 1), show(2, 0), book("Earthsea", 0, false)];
+        assert_eq!(home_hint(&lib, true), "5 new");
+        assert_eq!(home_hint(&lib, false), "", "a book not begun is not one you are in");
+        lib.books.push(book("Dune", 2, false));
+        lib.books.push(book("Done", 2, true));
+        assert_eq!(home_hint(&lib, false), "Dune");
+        lib.books[2].pos_ms = 5;
+        assert_eq!(home_hint(&lib, false), "2 started");
+        lib.books.retain(|b| !b.is_podcast());
+        assert_eq!(home_hint(&lib, true), "", "no shows, no hint");
     }
 
     #[test]

@@ -4405,6 +4405,20 @@ impl App {
                 return;
             }
         }
+        // Pivot: Home is the root. Back from the music or the spoken-word pivot, or from the
+        // folder tree's top, lands on Home however you got there (a Now Playing button, the start
+        // screen, a pin), as a phone's hub does; Back from Home is Now Playing.
+        if self.pivot()
+            && matches!(self.current(), Screen::Library | Screen::Books | Screen::Folders)
+            && self.stack.len().checked_sub(2).map(|i| self.stack[i]) != Some(Screen::Menu)
+        {
+            self.stack.pop();
+            if self.stack.is_empty() {
+                self.stack.push(Screen::NowPlaying);
+            }
+            self.push_screen(Screen::Menu);
+            return;
+        }
         if self.stack.len() > 1 {
             self.boot_stock_armed = false;
             // Leaving the playlist editor any way but DONE leaves without saving — DONE clears the
@@ -12352,11 +12366,32 @@ impl App {
                     })
                     .collect();
                 if self.pivot() {
+                    // Pivot's Home says only what is live: new episodes, the book you are in.
+                    let shows = crate::pivot::home_hint(&self.lib, true);
+                    let books = crate::pivot::home_hint(&self.lib, false);
+                    let items: Vec<MenuItem> = items
+                        .into_iter()
+                        .zip(self.menu_visible())
+                        .map(|(m, e)| MenuItem {
+                            sub: match e.0 {
+                                Screen::Show => &shows,
+                                Screen::Books => &books,
+                                _ => "",
+                            },
+                            ..m
+                        })
+                        .collect();
+                    let now = crate::pivot::HomeNow {
+                        title: np.title,
+                        artist: np.artist,
+                        progress: np.progress,
+                        playing: np.playing,
+                    };
                     crate::pivot::home(
                         c,
                         &theme,
                         fonts,
-                        &strip,
+                        (!np.title.is_empty()).then_some(&now),
                         &items,
                         self.home_screen as usize,
                         self.menu_scroll(),
@@ -29355,6 +29390,39 @@ mod r4_tests {
         a.set_style(crate::style::Style::Cinder);
         assert_eq!(a.menu_visible()[0].1, "Library");
         assert!(a.menu_idx < a.menu_len());
+    }
+
+    /// In Pivot, Home is the root: Back from the music or spoken-word pivot lands on Home however
+    /// you came in, and Back from Home is Now Playing. Other screens keep their own Back.
+    #[test]
+    fn pivot_back_from_a_hub_lands_on_home() {
+        let mut a = pivot_app();
+        // Opened from Now Playing's Library button, or as the start screen: no Home under it.
+        a.stack = vec![Screen::NowPlaying, Screen::Library];
+        a.press(Button::Back);
+        assert_eq!(a.stack, [Screen::NowPlaying, Screen::Menu]);
+        a.press(Button::Back);
+        assert_eq!(a.stack, [Screen::NowPlaying]);
+        // Through Home, Back is a plain pop.
+        a.stack = vec![Screen::NowPlaying, Screen::Menu, Screen::Books];
+        a.press(Button::Back);
+        assert_eq!(a.stack, [Screen::NowPlaying, Screen::Menu]);
+        // A stack of one (a pin restored) still has Home and Now Playing under it.
+        a.stack = vec![Screen::Books];
+        a.press(Button::Back);
+        assert_eq!(a.stack, [Screen::NowPlaying, Screen::Menu]);
+        // An album page still goes back to its list, and Up Next to Now Playing.
+        a.stack = vec![Screen::NowPlaying, Screen::Library, Screen::Album];
+        a.press(Button::Back);
+        assert_eq!(a.current(), Screen::Library);
+        a.stack = vec![Screen::NowPlaying, Screen::UpNext];
+        a.press(Button::Back);
+        assert_eq!(a.stack, [Screen::NowPlaying]);
+        // The Cinder style keeps the old Back.
+        a.set_style(crate::style::Style::Cinder);
+        a.stack = vec![Screen::NowPlaying, Screen::Library];
+        a.press(Button::Back);
+        assert_eq!(a.stack, [Screen::NowPlaying]);
     }
 
     #[test]

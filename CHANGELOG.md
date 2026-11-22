@@ -31,6 +31,12 @@ level the commit history supports; from `v0.1.6` onward, entries are written as 
   wells or chip boxes, and its actions as words in the accent. Nothing a finger lands on moves.
   *Device-unverified* (host tests, previews and the simulator).
 
+- **Pivot's Home is the root, and says what is live.** Back from music, the spoken word or the
+  folders lands on Home however you got there (from Now Playing, the start screen or a pin), and
+  Back from Home is Now Playing. Home's top line is "now playing" (or "paused") with the song, the
+  artist and a thin progress line, one tap to the player. Podcasts shows how many episodes are new,
+  and audiobooks the book you are in (or how many you have started). *Device-unverified.*
+
 - **Pivot's Home is a hub, and the old look is gone from it.** Home lists music, podcasts,
   audiobooks and fm radio first, then folders, soundscapes, sound, bluetooth, usb-dac, settings and
   help. Music is its own pivot (songs, albums, artists, playlists, and folders when that tab is on);

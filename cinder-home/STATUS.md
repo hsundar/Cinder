@@ -15,6 +15,10 @@
 >   `App::render`) draws every Sans and Mono in Legible and says capitals labels in lower case,
 >   through `measure` and `draw` alike; `widgets::set_quiet_line` drops the dividers. Same
 >   geometry, so the hit tests are untouched; the overflow test walks every screen in Pivot.
+> - **Pivot Home as root**: `pop_screen` sends Back from Library, Books or Folders to Home when
+>   Home is not under it (Pivot only). `pivot::home` draws `HomeNow` (song, artist, progress) and
+>   `pivot::home_hint` beside podcasts (new episodes) and audiobooks (the book in progress).
+>   Checklist 52.13.
 > - **Pivot hub**: in Pivot, Home reads `PIVOT_HUB` (nav.rs), not `MENU`: music, podcasts,
 >   audiobooks, fm radio, then the rest. `pivot::sections(lib, at)` keeps music (the four tabs and
 >   folders) and the spoken word (podcasts, books) as separate pivots; `activate_menu` opens Books

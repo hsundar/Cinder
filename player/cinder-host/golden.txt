@@ -485,7 +485,7 @@ fc8b35ce8b081cf7 wifi_failed
 f7e73fd75dac42d7 pivot_library_artists
 17e1fdab19e7226b pivot_library_playlists
 a4ac54e645605116 pivot_books
-5140589a1e91a22a pivot_home
+3d98e5b193ac5435 pivot_home
 98fcf170086261fa pivot_podcasts
 3d55d116780c9bb8 pivot_show
 84a73f96ab5e9bbf pivot_album
