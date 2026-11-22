@@ -463,21 +463,28 @@ pub fn chips_in(
 ) -> i32 {
     // A row with a label too wide for its chip steps down to the caption size, all of it, before
     // anything is cut: at the owner's 120 % the Menu's START ON chips read "Now Pla…".
-    let probe = sty(
-        Family::Sans,
-        Weight::SemiBold,
-        crate::scale::SECONDARY,
-        t.ink,
-        0.0,
-    );
+    let pivot = crate::pivot::on(t);
+    // Measured in the face the words are drawn in: Pivot's lower case is a size up.
+    let probe = if pivot {
+        crate::pivot::face(Weight::SemiBold, crate::scale::SECONDARY + 1.0, t.ink)
+    } else {
+        sty(
+            Family::Sans,
+            Weight::SemiBold,
+            crate::scale::SECONDARY,
+            t.ink,
+            0.0,
+        )
+    };
     let size = if labels.iter().enumerate().any(|(i, l)| {
-        text::measure(f, crate::i18n::text(l), &probe) > (chip_span(i, cols).1 - 16) as f32
+        let l = crate::i18n::text(l);
+        let l = if pivot { l.to_lowercase().into() } else { std::borrow::Cow::Borrowed(l) };
+        text::measure(f, &l, &probe) > (chip_span(i, cols).1 - 16) as f32
     }) {
         crate::scale::CAPTION
     } else {
         crate::scale::SECONDARY
     };
-    let pivot = crate::pivot::on(t);
     for (i, l) in labels.iter().enumerate() {
         let l = crate::i18n::text(l);
         let (x, w) = chip_span(i, cols);

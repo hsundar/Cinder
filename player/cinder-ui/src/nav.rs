@@ -38,6 +38,10 @@ pub enum Button {
     Prev,
 }
 
+/// A Pivot section change slides in over this long, from this far to the side.
+const PIVOT_SLIDE_MS: u32 = 260;
+const PIVOT_SLIDE_PX: f32 = 96.0;
+
 /// The text size Big view starts from (`App::set_big_view`).
 pub const BIG_TEXT_PCT: u32 = 130;
 
@@ -820,19 +824,18 @@ const MENU: [(Screen, &str, &str); 12] = [
 /// own pivot (songs · albums · artists · playlists); podcasts and audiobooks are the two sides of
 /// the spoken-word pivot, which `activate_menu` opens on the side named. `Screen::Show` is the
 /// podcasts word's placeholder, intercepted there like Preview's. Same filters as [`MENU`].
-const PIVOT_HUB: [(Screen, &str, &str); 14] = [
+///
+/// Bluetooth, USB-DAC, Wi-Fi and the folder tree are not here: they open from the top of Settings
+/// (`settings::PIVOT_LINKS`), and the folders are also a music section when that tab is on.
+const PIVOT_HUB: [(Screen, &str, &str); 10] = [
     (Screen::Library, "Music", ""),
     (Screen::Show, "Podcasts", ""),
     (Screen::Books, "Audiobooks", ""),
     (Screen::Fm, "FM radio", ""),
-    (Screen::Folders, "Folders", ""),
     (Screen::SensMe, "SensMe", ""),
     (Screen::Zappin, "Preview", ""),
     (Screen::Soundscape, "Soundscapes", ""),
     (Screen::Sound, "Sound", ""),
-    (Screen::Bluetooth, "Bluetooth", ""),
-    (Screen::Wifi, "Wi-Fi", ""),
-    (Screen::UsbDac, "USB-DAC", ""),
     (Screen::Settings, "Settings", ""),
     (Screen::Help, "Help & controls", ""),
 ];
@@ -1541,6 +1544,9 @@ pub struct App {
     /// Settings ▸ Display ▸ Style. Persisted as `style=cinder|nocturne|terminal`, and put on the
     /// theme every frame so every render sees it.
     style: crate::style::Style,
+    /// The style Settings ▸ Big view left when it turned Pivot on, to go back to when it is
+    /// turned off. Not saved: after a restart, off is Cinder.
+    big_prev_style: Option<crate::style::Style>,
     /// The shell has a Winamp skin loaded, so the Winamp style is the landscape view
     /// (`winamp.rs`), with its counting-down time and folded window.
     winamp_skin: bool,
@@ -2027,6 +2033,12 @@ pub struct App {
     books_scroll_px: i32,
     /// Pivot: the Books screen shows the podcast shows rather than the books.
     pivot_podcasts: bool,
+    /// Pivot's music is on its genres section (not one of the list tabs).
+    pivot_genres: bool,
+    /// A section change sliding in: ms left of [`PIVOT_SLIDE_MS`], and the side it comes from
+    /// (+1: from the right, after a leftward swipe or a tap on a later name; -1: from the left).
+    pivot_slide_ms: u32,
+    pivot_slide_from: i32,
     /// The podcast show open on `Screen::Show` (index into `Library::books`), and its scroll.
     show_view: usize,
     show_scroll_px: i32,
@@ -2243,6 +2255,7 @@ impl Default for App {
             home_pending: false,
             volume_hud: 0,
             style: crate::style::Style::Cinder,
+            big_prev_style: None,
             battery_care: false,
             batt_pct: 0,
             // Empty, not "Unknown": the screen prints these verbatim, and an invented word would
@@ -2465,6 +2478,9 @@ impl Default for App {
             sensme_scroll_px: 0,
             books_scroll_px: 0,
             pivot_podcasts: false,
+            pivot_genres: false,
+            pivot_slide_ms: 0,
+            pivot_slide_from: 1,
             show_view: 0,
             show_scroll_px: 0,
             sensme_scroll_saved: 0,
@@ -2694,6 +2710,7 @@ impl App {
     pub fn open_library_for_test(&mut self, tab: library::Tab) {
         self.stack = vec![Screen::Library];
         self.lib_tab = tab;
+        self.pivot_genres = false;
     }
 
     #[doc(hidden)]
@@ -3347,10 +3364,7 @@ impl App {
     fn onboarding_choice(&mut self, choice: crate::onboarding::Choice) -> Vec<Action> {
         use crate::onboarding::Choice;
         match choice {
-            Choice::Big => {
-                self.set_big_view(!crate::scale::large());
-                vec![Action::UiScaleChanged]
-            }
+            Choice::Big => self.toggle_big_view(),
             Choice::Bar => {
                 crate::scale::set_big_bar(!crate::scale::big_bar_set());
                 vec![Action::UiScaleChanged]
@@ -4408,10 +4422,14 @@ impl App {
         // Pivot: Home is the root. Back from the music or the spoken-word pivot, or from the
         // folder tree's top, lands on Home however you got there (a Now Playing button, the start
         // screen, a pin), as a phone's hub does; Back from Home is Now Playing.
-        if self.pivot()
-            && matches!(self.current(), Screen::Library | Screen::Books | Screen::Folders)
-            && self.stack.len().checked_sub(2).map(|i| self.stack[i]) != Some(Screen::Menu)
-        {
+        let below = self.stack.len().checked_sub(2).map(|i| self.stack[i]);
+        let hub = match self.current() {
+            Screen::Library | Screen::Books => true,
+            // The folder tree is a music section from the Library, but a place in Settings.
+            Screen::Folders => matches!(below, None | Some(Screen::Library | Screen::NowPlaying)),
+            _ => false,
+        };
+        if self.pivot() && hub && below != Some(Screen::Menu) {
             self.stack.pop();
             if self.stack.is_empty() {
                 self.stack.push(Screen::NowPlaying);
@@ -4581,6 +4599,7 @@ impl App {
 
     /// Switch the Library's list to `tab`, from its top.
     fn show_lib_tab(&mut self, tab: Tab) {
+        self.pivot_genres = false;
         self.lib_tab = tab;
         self.lib_idx = 0;
         self.lib_scroll_px = 0;
@@ -4948,8 +4967,20 @@ impl App {
                 self.push(Screen::ClockSet);
                 vec![]
             }
-            crate::settings::ROW_WIFI => {
+            crate::settings::ROW_WIFI | crate::settings::ROW_WIFI_LINK => {
                 self.push(Screen::Wifi);
+                vec![]
+            }
+            crate::settings::ROW_BLUETOOTH => {
+                self.push(Screen::Bluetooth);
+                vec![]
+            }
+            crate::settings::ROW_USB_DAC => {
+                self.push(Screen::UsbDac);
+                vec![]
+            }
+            crate::settings::ROW_FOLDERS => {
+                self.open_folders();
                 vec![]
             }
             crate::settings::ROW_ALARM => {
@@ -4973,11 +5004,10 @@ impl App {
                 self.set_ignore_the(!self.ignore_the);
                 vec![]
             }
-            crate::settings::ROW_BIG => {
-                let on = !crate::scale::large();
-                self.set_big_view(on);
-                vec![Action::UiScaleChanged]
-            }
+            // Big view is Pivot now: the large-type style, rather than the old layouts at 130 %,
+            // which had pages that broke. Turning it off goes back to the style it replaced. An
+            // old Big view still loaded from the settings file is turned off on the way, either way.
+            crate::settings::ROW_BIG => self.toggle_big_view(),
             crate::settings::ROW_BIG_BAR => {
                 crate::scale::set_big_bar(!crate::scale::big_bar_set());
                 vec![Action::UiScaleChanged]
@@ -8994,6 +9024,8 @@ impl App {
             } else {
                 crate::pivot::Section::Books
             }
+        } else if self.pivot_genres {
+            crate::pivot::Section::Genres
         } else {
             crate::pivot::Section::Tab(self.lib_tab)
         }
@@ -9010,6 +9042,11 @@ impl App {
                 self.show_lib_tab(t);
             }
             (Screen::Library, Section::Tab(t)) => self.show_lib_tab(t),
+            (Screen::Library, Section::Genres) => {
+                self.pivot_genres = true;
+                self.lib_scroll_px = 0;
+                self.fling_v = 0.0;
+            }
             (Screen::Library, Section::Books | Section::Podcasts) => {
                 self.library_to_books();
                 self.pivot_podcasts = to == Section::Podcasts;
@@ -9275,9 +9312,21 @@ impl App {
     /// row does in the Cinder style.
     fn tap_pivot_library(&mut self, x: i32, y: i32) -> Vec<Action> {
         use crate::pivot::{self, Section};
+        if self.search_enabled
+            && self.current() == Screen::Library
+            && pivot::search_hit(x, y)
+        {
+            self.open_search();
+            return vec![];
+        }
         if (pivot::strip_top()..pivot::strip_bottom()).contains(&y) {
             let hit = pivot::strip_hit(&self.pivot_zones.borrow(), x);
             if let Some(sec) = hit {
+                // The names after the current one are to its right: what is tapped comes in from
+                // there, as a swipe to it would bring it.
+                if sec != self.pivot_section() && sec != Section::Folders {
+                    self.pivot_slide(1);
+                }
                 self.pivot_go(sec);
             }
             return vec![];
@@ -9346,8 +9395,60 @@ impl App {
                 }
                 vec![]
             }
+            // A genre filters the music and shows its songs; "all genres" clears it.
+            Section::Genres => {
+                let want = row.checked_sub(1).and_then(|i| self.lib.genres.get(i)).map(|g| g.id);
+                self.set_genre_filter(want);
+                self.pivot_go(Section::Tab(Tab::Songs));
+                vec![]
+            }
             Section::Folders => vec![],
         }
+    }
+
+    /// The Big view switch (Settings, and the introduction's "Make it yours"): Pivot on, or back to
+    /// the style it replaced; an old 130 % Big view goes off either way.
+    fn toggle_big_view(&mut self) -> Vec<Action> {
+        if self.pivot() {
+            let back = self.big_prev_style.take().unwrap_or(crate::style::Style::Cinder);
+            self.set_style(back);
+        } else {
+            self.big_prev_style = Some(self.style);
+            self.set_style(crate::style::Style::Pivot);
+        }
+        self.set_big_view(false);
+        vec![Action::UiScaleChanged]
+    }
+
+    /// Start a section slide from `from` (+1 right, -1 left). See [`App::pivot_slide_dx`].
+    fn pivot_slide(&mut self, from: i32) {
+        self.pivot_slide_ms = PIVOT_SLIDE_MS;
+        self.pivot_slide_from = from;
+    }
+
+    /// How far the list is still shifted, and the heading (half as far, so it seems further
+    /// away): an ease-out, quick at first and settling, `(list, heading)` px.
+    fn pivot_slide_dx(&self) -> (i32, i32) {
+        if self.pivot_slide_ms == 0 {
+            return (0, 0);
+        }
+        let left = self.pivot_slide_ms as f32 / PIVOT_SLIDE_MS as f32;
+        let d = PIVOT_SLIDE_PX * left * left * left * self.pivot_slide_from as f32;
+        (d.round() as i32, (d / 2.0).round() as i32)
+    }
+
+    /// Filter the music to a genre (`None`: every genre), dropping what was derived from the old
+    /// set as the genre picker does.
+    fn set_genre_filter(&mut self, genre: Option<i64>) {
+        if self.lib.filter_genre == genre {
+            return;
+        }
+        self.lib.filter_genre = genre;
+        self.az_memo = None;
+        self.lib_scroll_px = 0;
+        self.fling_v = 0.0;
+        self.lib_idx = 0;
+        self.album_expanded = None;
     }
 
     /// Sound quality's scroll, clamped: Big view off, or a codec without the LDAC rows, leaves less
@@ -10508,6 +10609,10 @@ impl App {
             // Pivot: a sideways swipe moves between the sections; rows queue by long-press instead.
             Screen::Library | Screen::Books if self.pivot() => {
                 let next = crate::pivot::neighbour(&self.lib, self.pivot_section(), dir);
+                // Folders is another screen; only a section that stays here slides.
+                if next != crate::pivot::Section::Folders {
+                    self.pivot_slide(if dir < 0 { 1 } else { -1 });
+                }
                 self.pivot_go(next);
                 vec![]
             }
@@ -12432,6 +12537,7 @@ impl App {
                 0,
                 None,
                 false,
+                false,
             ),
             Screen::Library | Screen::Books if self.pivot() => {
                 let sec = self.pivot_section();
@@ -12456,7 +12562,14 @@ impl App {
                     scroll,
                     self.playing_object_id(),
                     self.sbar_active(),
+                    self.search_enabled,
                 );
+                let (list, head) = self.pivot_slide_dx();
+                if list != 0 {
+                    let top = crate::chrome::STATUS_H;
+                    c.shift_rows_x(top, crate::pivot::strip_top(), head, theme.bg);
+                    c.shift_rows_x(crate::pivot::strip_top(), crate::pivot::list_bottom(), list, theme.bg);
+                }
             }
             Screen::Library => {
                 // Record the tab strip exactly as drawn, so `tap` hits the labels the user sees.
@@ -12647,7 +12760,7 @@ impl App {
                 fonts,
                 self.onboarding_page,
                 &crate::onboarding::Choices {
-                    big: crate::scale::large(),
+                    big: self.pivot(),
                     bar: crate::scale::big_bar_set(),
                     icons: crate::scale::big_icons_set(),
                     quick: self.opt(Opt::Quick),
@@ -13102,7 +13215,7 @@ impl App {
                 let db_label = self.database_label();
                 let view = crate::settings::SettingsView {
                     volume_limit: self.volume_limit,
-                    big_view: crate::scale::large(),
+                    big_view: self.pivot(),
                     big_bar: crate::scale::big_bar_set(),
                     big_icons: crate::scale::big_icons_set(),
                     ignore_the: self.ignore_the,
@@ -13909,6 +14022,10 @@ impl App {
         }
         // HUD/toast countdowns are expressed in 60 fps frames; burn the number of frames that
         // really elapsed so their on-screen duration is the same at any frame rate.
+        if self.pivot_slide_ms > 0 {
+            self.pivot_slide_ms = self.pivot_slide_ms.saturating_sub(dt_ms);
+            animating = true;
+        }
         let frames = ((dt / FRAME_MS as f32).round() as u8).max(1);
         for ctr in [
             &mut self.vol_overlay,
@@ -17193,10 +17310,11 @@ mod tests {
     /// Named constants now, and they have to agree with the section table.
     #[test]
     fn the_about_rows_are_the_last_two_and_distinct_from_power_off() {
-        use crate::settings::{ROWS, ROW_FIRMWARE, ROW_MODEL, ROW_POWER_OFF};
-        assert_eq!(ROW_MODEL, ROWS - 1);
-        assert_eq!(ROW_FIRMWARE, ROWS - 2);
+        use crate::settings::{GROUPS, ROW_FIRMWARE, ROW_MODEL, ROW_POWER_OFF};
+        let system = GROUPS.iter().find(|g| g.0 == "System").expect("a System page").2;
+        assert_eq!(system[system.len() - 2..], [ROW_FIRMWARE, ROW_MODEL]);
         assert_ne!(ROW_FIRMWARE, ROW_POWER_OFF);
+        assert_ne!(ROW_MODEL, ROW_POWER_OFF);
     }
 
     /// The genre filter is a FILTER, not a browse tab: it narrows the list that is already there.
@@ -19991,13 +20109,30 @@ mod tests {
         assert_ne!(a.current(), Screen::Lock);
     }
 
+    /// Settings ▸ Big view is the Pivot style now: on turns Pivot on, off gives back the style it
+    /// replaced, and an old 130 % Big view from the settings file goes off either way.
+    #[test]
+    fn the_big_view_row_switches_to_pivot_and_back() {
+        let _g = crate::text::scale_guard();
+        let mut a = unlocked();
+        a.set_style(crate::style::Style::Terminal);
+        a.set_big_view(true);
+        a.push_for_test(Screen::Settings);
+        let row = crate::settings::row_top_px(crate::settings::ROW_BIG) + crate::settings::LIST_TOP;
+        assert_eq!(a.tap(200, row + 20), vec![Action::UiScaleChanged]);
+        assert_eq!(a.style(), crate::style::Style::Pivot);
+        assert!(!a.big_view(), "the old layouts are off");
+        a.settings_sel = crate::settings::ROW_BIG;
+        a.settings_activate();
+        assert_eq!(a.style(), crate::style::Style::Terminal, "back to the style it replaced");
+    }
+
+    /// The old Big view, as a settings file still loads it.
     #[test]
     fn big_view_grows_rows_and_text_and_gives_back_a_size_it_set() {
         let _g = crate::text::scale_guard();
         let mut a = unlocked();
-        a.push_for_test(Screen::Settings);
-        let row = crate::settings::row_top_px(crate::settings::ROW_BIG) + crate::settings::LIST_TOP;
-        assert_eq!(a.tap(200, row + 20), vec![Action::UiScaleChanged]);
+        a.set_big_view(true);
         assert!(a.big_view());
         assert_eq!(crate::text::scale_pct(), BIG_TEXT_PCT);
         assert_eq!(crate::scale::TRACK_ROW_H(), 78);
@@ -23258,13 +23393,14 @@ mod tests {
             "the extras wait for Big view"
         );
         assert_eq!(a.tap(400, row_y(Choice::Big)), vec![Action::UiScaleChanged]);
-        assert!(crate::scale::large(), "Big view is on");
+        assert_eq!(a.style(), crate::style::Style::Pivot, "Big view is the Pivot style");
+        assert!(!crate::scale::large(), "not the old layouts");
         assert_eq!(
             a.onboarding_page, CHOICES_PAGE,
             "a row does not turn the page"
         );
-        assert_eq!(a.tap(400, row_y(Choice::Bar)), vec![Action::UiScaleChanged]);
-        assert!(crate::scale::big_bar());
+        a.tap(400, row_y(Choice::Big));
+        assert_eq!(a.style(), crate::style::Style::Cinder, "and off again");
         a.tap(400, row_y(Choice::Quick));
         assert!(a.opt(Opt::Quick));
         a.tap(400, row_y(Choice::Folders));
@@ -29423,6 +29559,76 @@ mod r4_tests {
         a.stack = vec![Screen::NowPlaying, Screen::Library];
         a.press(Button::Back);
         assert_eq!(a.stack, [Screen::NowPlaying]);
+    }
+
+    /// Pivot's Home is short: Bluetooth, USB-DAC and the folders open from the top of Settings
+    /// instead, and Back from the folder tree opened there is Settings, not Home.
+    #[test]
+    fn pivot_settings_holds_what_left_home() {
+        use crate::settings::{page_rows, ROW_BLUETOOTH, ROW_FOLDERS, ROW_USB_DAC};
+        let mut a = pivot_app();
+        a.push_for_test(Screen::Menu);
+        assert!(!a.menu_visible().iter().any(|m| matches!(m.0, Screen::Bluetooth | Screen::UsbDac | Screen::Folders)));
+        a.set_style(crate::style::Style::Pivot);
+        assert_eq!(page_rows(None, false)[..3], [ROW_BLUETOOTH, ROW_USB_DAC, ROW_FOLDERS]);
+        a.push(Screen::Settings);
+        for (row, screen) in [(ROW_BLUETOOTH, Screen::Bluetooth), (ROW_USB_DAC, Screen::UsbDac), (ROW_FOLDERS, Screen::Folders)] {
+            a.settings_sel = row;
+            a.settings_activate();
+            assert_eq!(a.current(), screen);
+            a.press(Button::Back);
+            assert_eq!(a.current(), Screen::Settings, "Back from {screen:?}");
+        }
+        a.set_style(crate::style::Style::Cinder);
+        assert!(!page_rows(None, false).contains(&ROW_BLUETOOTH), "Cinder's Menu still has them");
+    }
+
+    /// Pivot's music has a genres section: a genre filters the music and shows its songs under
+    /// the genre's name, "all genres" clears it, and the search glyph opens search.
+    #[test]
+    fn pivot_genres_filter_the_music_and_search_opens() {
+        use crate::pivot::Section;
+        let mut a = pivot_app();
+        assert!(!a.lib.genres.is_empty(), "the sample has genres");
+        a.open_library_for_test(Tab::Songs);
+        assert!(crate::pivot::sections(&a.lib, a.pivot_section()).contains(&Section::Genres));
+        a.pivot_go(Section::Genres);
+        assert_eq!(a.pivot_section(), Section::Genres);
+        let rh = crate::pivot::row_h(Section::Genres);
+        // Row 1 is the first genre (row 0 is "all genres").
+        a.tap(60, crate::pivot::list_top() + rh + 10);
+        let first = a.lib.genres[0].id;
+        assert_eq!(a.lib.filter_genre, Some(first));
+        assert_eq!(a.pivot_section(), Section::Tab(Tab::Songs));
+        a.pivot_go(Section::Genres);
+        a.tap(60, crate::pivot::list_top() + 10);
+        assert_eq!(a.lib.filter_genre, None, "all genres");
+        // Search: only with the component, from the glyph at the heading's end.
+        let (x0, y0, x1, y1) = crate::pivot::search_zone();
+        a.pivot_go(Section::Tab(Tab::Songs));
+        a.tap((x0 + x1) / 2, (y0 + y1) / 2);
+        assert_eq!(a.current(), Screen::Library, "no search component, no glyph");
+        a.set_search_enabled(true);
+        a.tap((x0 + x1) / 2, (y0 + y1) / 2);
+        // Search opens with its keyboard already up, over the search page.
+        assert_eq!(a.stack[a.stack.len() - 2..], [Screen::Search, Screen::Keyboard]);
+    }
+
+    /// A section change slides in from the side it came from and settles, repainting until then.
+    #[test]
+    fn pivot_sections_slide_in_and_settle() {
+        let mut a = pivot_app();
+        a.open_library_for_test(Tab::Songs);
+        assert_eq!(a.pivot_slide_dx(), (0, 0));
+        a.swipe(-1, 300, 500);
+        let (list, head) = a.pivot_slide_dx();
+        assert!(list > 0 && head > 0 && head < list, "from the right, the heading slower: {list} {head}");
+        assert!(a.tick_dt(100), "still moving");
+        assert!(a.pivot_slide_dx().0 < list);
+        a.tick_dt(1000);
+        assert_eq!(a.pivot_slide_dx(), (0, 0));
+        a.swipe(1, 300, 500);
+        assert!(a.pivot_slide_dx().0 < 0, "a rightward swipe brings it from the left");
     }
 
     #[test]

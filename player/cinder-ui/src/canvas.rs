@@ -134,6 +134,27 @@ impl Canvas {
         self.off_x = 0;
     }
 
+    /// Move what is already drawn in rows `y0..y1` sideways by `dx` px, filling the uncovered
+    /// edge with `fill`: a slide is drawn whole, then shifted, so nothing it draws needs to know.
+    pub fn shift_rows_x(&mut self, y0: i32, y1: i32, dx: i32, fill: Rgb888) {
+        let (y0, y1) = (y0.clamp(0, H as i32) as usize, y1.clamp(0, H as i32) as usize);
+        let d = dx.unsigned_abs() as usize;
+        if dx == 0 || d >= W {
+            return;
+        }
+        let v = to_u32(fill);
+        for y in y0..y1 {
+            let row = &mut self.buf[y * W..(y + 1) * W];
+            if dx > 0 {
+                row.copy_within(0..W - d, d);
+                row[..d].fill(v);
+            } else {
+                row.copy_within(d..W, 0);
+                row[W - d..].fill(v);
+            }
+        }
+    }
+
     /// Restrict drawing to rows `top..bottom` (screen coords). Pair with `clear_clip`.
     pub fn set_clip_y(&mut self, top: i32, bottom: i32) {
         self.clip_top = top.clamp(0, H as i32);

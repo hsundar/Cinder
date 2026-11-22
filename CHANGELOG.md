@@ -31,6 +31,16 @@ level the commit history supports; from `v0.1.6` onward, entries are written as 
   wells or chip boxes, and its actions as words in the accent. Nothing a finger lands on moves.
   *Device-unverified* (host tests, previews and the simulator).
 
+- **A shorter Pivot Home, genres and search, motion, and Big view is Pivot.** Home is now music,
+  podcasts, audiobooks, fm radio, soundscapes, sound, settings and help (plus SensMe and Preview
+  when installed); Bluetooth, USB-DAC, Wi-Fi and Folders open from the top of Settings, in Pivot
+  only. The music pivot gains a genres section ("all genres" first): a genre filters the music and
+  shows its songs under the genre's name. With the search option installed, a search glyph at the
+  end of the music heading opens search. Changing section slides the list in from the side it
+  came from, the heading following at half the distance. Settings ▸ Big view (and the
+  introduction's switch) now turns the Pivot style on, and off gives back the style it replaced;
+  the old 130 % layouts are no longer turned on from there. *Device-unverified.*
+
 - **Pivot's Home is the root, and says what is live.** Back from music, the spoken word or the
   folders lands on Home however you got there (from Now Playing, the start screen or a pin), and
   Back from Home is Now Playing. Home's top line is "now playing" (or "paused") with the song, the

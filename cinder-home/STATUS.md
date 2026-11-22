@@ -15,6 +15,14 @@
 >   `App::render`) draws every Sans and Mono in Legible and says capitals labels in lower case,
 >   through `measure` and `draw` alike; `widgets::set_quiet_line` drops the dividers. Same
 >   geometry, so the hit tests are untouched; the overflow test walks every screen in Pivot.
+> - **Pivot Home trimmed; genres, search, slide; Big view = Pivot**: `PIVOT_HUB` drops Bluetooth,
+>   USB-DAC, Wi-Fi and Folders, which become `settings::PIVOT_LINKS` at the top of Settings' home
+>   page (shown only while `text::pivot_type()`). `pivot::Section::Genres` sets
+>   `Library::filter_genre` and moves to songs; the heading names the genre. `pivot::search_zone`
+>   (search component only) opens search. `App::pivot_slide` + `Canvas::shift_rows_x` slide a
+>   section change in over 260 ms (`tick_dt` keeps painting). `App::toggle_big_view` (Settings and
+>   onboarding) switches to Pivot and back and turns `scale::large` off; `set_big_view` still loads
+>   an old setting. Checklist 52.14.
 > - **Pivot Home as root**: `pop_screen` sends Back from Library, Books or Folders to Home when
 >   Home is not under it (Pivot only). `pivot::home` draws `HomeNow` (song, artist, progress) and
 >   `pivot::home_hint` beside podcasts (new episodes) and audiobooks (the book in progress).

@@ -260,6 +260,8 @@ mod tests {
     #[test]
     fn truncation_ends_on_a_whole_akshara_at_every_width() {
         use crate::text::{Family, FontSet, TextStyle, Weight};
+        // Measures at 100 %: hold the text size against tests that change it.
+        let _g = crate::text::scale_guard();
         let fonts = FontSet::load();
         let st = TextStyle {
             fam: Family::Sans,

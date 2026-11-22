@@ -67,6 +67,8 @@ pub enum Section {
     Books,
     /// The podcast shows: books that `BookRow::is_podcast` says are shows.
     Podcasts,
+    /// The genres, "all genres" first: a row filters the music to it and goes to its songs.
+    Genres,
     Folders,
 }
 
@@ -80,13 +82,14 @@ impl Section {
             Section::Tab(Tab::Playlists) => crate::i18n::text("playlists"),
             Section::Books => crate::i18n::text("books"),
             Section::Podcasts => crate::i18n::text("podcasts"),
+            Section::Genres => crate::i18n::text("genres"),
             Section::Folders => crate::i18n::text("folders"),
         }
     }
 }
 
-/// The sections that pivot beside `at`, in strip order. Music is the four list tabs, then folders
-/// when Settings ▸ Folders tab is on. The spoken word is a hub of its own, opened from Home as
+/// The sections that pivot beside `at`, in strip order. Music is the four list tabs, the genres
+/// (when the library has them), then folders when Settings ▸ Folders tab is on. The spoken word is a hub of its own, opened from Home as
 /// podcasts or audiobooks: those two, always both, so either Home word lands on its own list
 /// (empty, with where to put the files) even when the drive has none.
 pub fn sections(lib: &Library, at: Section) -> Vec<Section> {
@@ -99,6 +102,9 @@ pub fn sections(lib: &Library, at: Section) -> Vec<Section> {
         Section::Tab(Tab::Artists),
         Section::Tab(Tab::Playlists),
     ];
+    if !lib.genres.is_empty() {
+        v.push(Section::Genres);
+    }
     if lib.folders_tab {
         v.push(Section::Folders);
     }
@@ -197,6 +203,7 @@ pub fn count(sec: Section, lib: &Library, lib_sort: usize, album_sort: usize) ->
         Section::Tab(Tab::Playlists) => lib.playlists.len(),
         Section::Books => shelf(lib, false).len(),
         Section::Podcasts => shelf(lib, true).len(),
+        Section::Genres => lib.genres.len() + 1,
         Section::Folders => 0,
     }
 }
@@ -316,6 +323,17 @@ fn row_text(
                 )
             })
             .unwrap_or_default(),
+        Section::Genres => match rank.checked_sub(1) {
+            None => (
+                crate::i18n::text("all genres").to_string(),
+                crate::ui_format!("{} songs", lib.songs.len()),
+            ),
+            Some(i) => lib
+                .genres
+                .get(i)
+                .map(|g| (g.name.clone(), crate::ui_format!("{} songs", g.tracks)))
+                .unwrap_or_default(),
+        },
         Section::Folders => {
             let _ = (lib_sort, album_sort);
             Default::default()
@@ -359,6 +377,19 @@ pub fn heading(c: &mut Canvas, t: &Theme, f: &FontSet, word: &str) {
     c.clear_clip_x();
 }
 
+/// The music's search glyph, at the heading's right end: `(x0, y0, x1, y1)`. Drawn and hit only
+/// when the search component is installed.
+pub fn search_zone() -> (i32, i32, i32, i32) {
+    let s = px(56.0);
+    let y0 = crate::chrome::STATUS_H + px(14.0);
+    (W - s - 6, y0, W - 6, y0 + s)
+}
+
+pub fn search_hit(x: i32, y: i32) -> bool {
+    let (x0, y0, x1, y1) = search_zone();
+    (x0..x1).contains(&x) && (y0..y1.min(strip_top())).contains(&y)
+}
+
 /// The Library, or its books, in the Pivot style.
 #[allow(clippy::too_many_arguments)]
 pub fn library(
@@ -372,17 +403,34 @@ pub fn library(
     scroll: i32,
     playing_id: Option<i64>,
     sbar_active: bool,
+    search: bool,
 ) {
     c.fill(t.bg);
     heading(
         c,
         t,
         f,
-        match sec {
-            Section::Books | Section::Podcasts => crate::i18n::text("spoken word"),
-            _ => crate::i18n::text("music"),
+        &match sec {
+            Section::Books | Section::Podcasts => crate::i18n::text("spoken word").to_string(),
+            // Filtered to a genre, the music says which: the heading is the genre's name.
+            _ => lib
+                .filter_genre
+                .and_then(|id| lib.genres.iter().find(|g| g.id == id))
+                .map_or_else(|| crate::i18n::text("music").to_string(), |g| g.name.to_lowercase()),
         },
     );
+    if search && !matches!(sec, Section::Books | Section::Podcasts) {
+        // A solid patch first, so a long heading running off the edge does not show through.
+        let (x0, y0, x1, y1) = search_zone();
+        crate::widgets::fill_rect(c, x0, y0, x1 - x0, y1 - y0, t.bg);
+        crate::icons::search(
+            c,
+            ((x0 + x1) / 2) as f32,
+            ((y0 + y1) / 2) as f32,
+            26.0 * text::touch_scale(),
+            t.ink,
+        );
+    }
 
     // The strip: the current section bright, the rest dim, the last ones cut by the edge.
     c.bleed_x();
@@ -450,14 +498,23 @@ pub fn library(
             break;
         }
         let (name, sub) = row_text(sec, lib, lib_sort, album_sort, rank, &order);
-        let playing = sec == Section::Tab(Tab::Songs)
-            && playing_id.is_some()
-            && order
-                .songs
-                .get(rank)
-                .and_then(|&i| lib.songs.get(i))
-                .map(|s| s.object_id)
-                == playing_id;
+        let playing = match sec {
+            Section::Tab(Tab::Songs) => {
+                playing_id.is_some()
+                    && order
+                        .songs
+                        .get(rank)
+                        .and_then(|&i| lib.songs.get(i))
+                        .map(|s| s.object_id)
+                        == playing_id
+            }
+            // The genre the music is filtered to (or "all genres" when it is not).
+            Section::Genres => {
+                rank.checked_sub(1).and_then(|i| lib.genres.get(i)).map(|g| g.id)
+                    == lib.filter_genre
+            }
+            _ => false,
+        };
         let name_col = if playing { t.acc } else { t.ink };
         if one_line {
             let s = st(Weight::Light, 30.0, name_col);

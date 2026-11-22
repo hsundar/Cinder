@@ -4399,6 +4399,19 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
             app.render(&mut c, &fonts, &np);
             save(&c, name);
         }
+        // The genres, one swipe past playlists; then the songs with the search glyph.
+        app.open_library_for_test(Tab::Playlists);
+        app.swipe(-1, 300, 500);
+        app.tick_dt(1000); // let the section slide settle
+        let mut c = Canvas::new();
+        app.render(&mut c, &fonts, &np);
+        save(&c, "pivot_library_genres");
+        app.set_search_enabled(true);
+        app.open_library_for_test(Tab::Songs);
+        let mut c = Canvas::new();
+        app.render(&mut c, &fonts, &np);
+        save(&c, "pivot_library_search");
+        app.set_search_enabled(false);
         for (name, screen) in [("pivot_books", Screen::Books), ("pivot_home", Screen::Menu)] {
             app.go_for_preview(screen);
             let mut c = Canvas::new();
@@ -4408,6 +4421,7 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
         // The podcasts beside the books, and a show's episodes.
         app.go_for_preview(Screen::Books);
         app.swipe(-1, 300, 500);
+        app.tick_dt(1000); // let the section slide settle
         let mut c = Canvas::new();
         app.render(&mut c, &fonts, &np);
         save(&c, "pivot_podcasts");
@@ -4425,6 +4439,7 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
             save(&c, name);
             if tab == Tab::Artists {
                 app.swipe(-1, 300, 500);
+                app.tick_dt(1000); // let the section slide settle
                 let mut c = Canvas::new();
                 app.render(&mut c, &fonts, &np);
                 save(&c, "pivot_artist_songs");

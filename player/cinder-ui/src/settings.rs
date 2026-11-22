@@ -17,7 +17,7 @@ use crate::theme::Theme;
 use crate::Canvas;
 
 /// Number of real rows. The home page's topic links are row ids after them ([`group_row`]).
-pub const ROWS: usize = 40;
+pub const ROWS: usize = 44;
 
 /// The topic pages: title, the home row's second line (what is inside), and the rows, in order.
 /// Every row is on exactly one page: here, or [`HOME_ROWS`].
@@ -89,6 +89,16 @@ pub const HOME_ROWS: [usize; 6] = [
     ROW_SLEEP,
 ];
 
+/// Pivot's Settings opens with the places that left its Home to keep the hub short: Bluetooth,
+/// USB-DAC, Wi-Fi (with the install option) and the folder tree. Links to the screens the Cinder
+/// Menu still opens itself; on the home page only, and only in Pivot (see [`shown`]).
+pub const PIVOT_LINKS: [usize; 4] = [ROW_BLUETOOTH, ROW_USB_DAC, ROW_WIFI_LINK, ROW_FOLDERS];
+pub const ROW_BLUETOOTH: usize = 40;
+pub const ROW_USB_DAC: usize = 41;
+/// Opens Wi-Fi like [`ROW_WIFI`], which stays on Device & storage: every row is on one page.
+pub const ROW_WIFI_LINK: usize = 42;
+pub const ROW_FOLDERS: usize = 43;
+
 /// The home row that opens topic page `g`.
 pub const fn group_row(g: usize) -> usize {
     ROWS + g
@@ -99,7 +109,7 @@ pub fn group_of_link(r: usize) -> Option<usize> {
 }
 /// The page row `r` is on: `None` for home (its own rows and the topic links).
 pub fn page_of(r: usize) -> Option<usize> {
-    if HOME_ROWS.contains(&r) || group_of_link(r).is_some() {
+    if HOME_ROWS.contains(&r) || PIVOT_LINKS.contains(&r) || group_of_link(r).is_some() {
         return None;
     }
     GROUPS.iter().position(|(_, _, rows)| rows.contains(&r))
@@ -107,8 +117,9 @@ pub fn page_of(r: usize) -> Option<usize> {
 /// The rows on `page` as drawn, top to bottom (`lang`: the Language row is shown).
 pub fn page_rows(page: Option<usize>, lang: bool) -> Vec<usize> {
     match page {
-        None => HOME_ROWS
+        None => PIVOT_LINKS
             .iter()
+            .chain(HOME_ROWS.iter())
             .copied()
             .filter(|r| shown(*r, lang))
             .chain((0..GROUPS.len()).map(group_row))
@@ -144,6 +155,9 @@ pub fn shown(r: usize, lang: bool) -> bool {
         ROW_BIG_BAR | ROW_BIG_ICONS => crate::scale::large(),
         // Only with the Wi-Fi install option: the player's own firmware has no Wi-Fi at all.
         ROW_WIFI => crate::wifi::installed(),
+        // The text layer's Pivot switch is the style on screen (`App::render` and `set_style`).
+        ROW_BLUETOOTH | ROW_USB_DAC | ROW_FOLDERS => crate::text::pivot_type(),
+        ROW_WIFI_LINK => crate::text::pivot_type() && crate::wifi::installed(),
         _ => true,
     }
 }
@@ -333,7 +347,7 @@ pub const SHUFFLE_SUB: &str = "What the shuffle button deals";
 /// The pull-down panel row's second line: where the gesture starts and what it opens.
 pub const QUICK_SUB: &str = "Swipe down from the top of the screen";
 /// The Big view row's second line: what it changes.
-pub const BIG_SUB: &str = "Bigger text, easier-to-press controls";
+pub const BIG_SUB: &str = "Large type: turns on the Pivot style";
 /// The Bluetooth auto off row's second line: when it acts.
 pub const BT_IDLE_OFF_SUB: &str = "Sleeps after 10 min idle, wakes on use";
 
@@ -464,7 +478,8 @@ fn trail<'a>(r: usize, v: &'a SettingsView) -> Trail<'a> {
     }
     match r {
         ROW_LANGUAGE => Trail::Open(crate::i18n::current().name()),
-        ROW_DISPLAY => Trail::Open(""),
+        ROW_DISPLAY | ROW_BLUETOOTH | ROW_USB_DAC | ROW_FOLDERS => Trail::Open(""),
+        ROW_WIFI_LINK => Trail::Open(crate::wifi::row_value()),
         ROW_BRIGHTNESS => Trail::Value(v.brightness),
         ROW_SCREEN_OFF => Trail::Value(v.screen_off),
         ROW_SWIPE_UP => Trail::Value(v.swipe_up.label()),
@@ -522,6 +537,10 @@ fn trail<'a>(r: usize, v: &'a SettingsView) -> Trail<'a> {
 fn title(r: usize) -> &'static str {
     match r {
         ROW_DISPLAY => crate::i18n::text("Display"),
+        ROW_BLUETOOTH => crate::i18n::text("Bluetooth"),
+        ROW_USB_DAC => crate::i18n::text("USB-DAC"),
+        ROW_WIFI_LINK => crate::i18n::text("Wi-Fi"),
+        ROW_FOLDERS => crate::i18n::text("Folders"),
         ROW_BRIGHTNESS => crate::i18n::text("Brightness"),
         ROW_SCREEN_OFF => crate::i18n::text("Screen-off timer"),
         ROW_QUICK => crate::i18n::text("Pull-down panel"),
@@ -848,7 +867,11 @@ mod volume_limit_tests {
     #[test]
     fn every_row_is_on_exactly_one_page() {
         for r in 0..ROWS {
-            let homes = HOME_ROWS.iter().filter(|x| **x == r).count();
+            let homes = HOME_ROWS
+                .iter()
+                .chain(PIVOT_LINKS.iter())
+                .filter(|x| **x == r)
+                .count();
             let groups = GROUPS
                 .iter()
                 .filter(|(_, _, rows)| rows.contains(&r))
