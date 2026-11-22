@@ -15,6 +15,9 @@
 >   `App::render`) draws every Sans and Mono in Legible and says capitals labels in lower case,
 >   through `measure` and `draw` alike; `widgets::set_quiet_line` drops the dividers. Same
 >   geometry, so the hit tests are untouched; the overflow test walks every screen in Pivot.
+> - **Search scopes** (redesign 1a, R3): `search::SCOPES` chips at `SCOPES_TOP`, results from
+>   `RESULTS_TOP`; `App::search_scope` filters `search_order` in `search_rebuild` via
+>   `search::in_scope`. Checklist 52.15.
 > - **Pivot Home trimmed; genres, search, slide; Big view = Pivot**: `PIVOT_HUB` drops Bluetooth,
 >   USB-DAC, Wi-Fi and Folders, which become `settings::PIVOT_LINKS` at the top of Settings' home
 >   page (shown only while `text::pivot_type()`). `pivot::Section::Genres` sets

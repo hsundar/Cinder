@@ -4,12 +4,54 @@
 //! Results come in that order: artists, albums, audiobooks, then songs. A row that opens a page
 //! wears a chevron; a song row wears the play mark and swipes to the queue like every other song.
 //!
+//! Scopes (redesign 1a, R3): a line of chips under the band — all · songs · albums · artists —
+//! keeps only that kind of result. "All" is the old search, audiobooks included.
+//!
 //! An opt-in component (`search` in `components.conf`): the Library header draws the button only
 //! when the shell says it is installed. The layout is the "Add tracks" picker's — a fixed search band
 //! over a plain list — because that screen already taught the idiom, and its geometry and hit tests
 //! are shared rather than copied, so the two cannot drift.
 
 use crate::playlist_pick::{content_h, BOTTOM, LIST_TOP, ROW_H, SEARCH_H, TOP};
+
+/// The scopes, in chip order. Index = `App`'s search scope.
+pub const SCOPES: [&str; 4] = ["All", "Songs", "Albums", "Artists"];
+pub const SCOPE_ALL: usize = 0;
+pub const SCOPE_SONGS: usize = 1;
+pub const SCOPE_ALBUMS: usize = 2;
+pub const SCOPE_ARTISTS: usize = 3;
+
+/// Does scope `scope` keep `hit`?
+pub fn in_scope(scope: usize, hit: Hit) -> bool {
+    match scope {
+        SCOPE_SONGS => matches!(hit, Hit::Song(_)),
+        SCOPE_ALBUMS => matches!(hit, Hit::Album(_)),
+        SCOPE_ARTISTS => matches!(hit, Hit::Artist(_)),
+        _ => true,
+    }
+}
+
+/// The scope chips' top, straight under the band, and the results' top under them.
+pub const SCOPES_TOP: i32 = LIST_TOP + 6;
+pub const RESULTS_TOP: i32 = SCOPES_TOP + crate::kit::CHIP_H + 6;
+
+/// The scope chip under `(x, y)`.
+pub fn scope_at(x: i32, y: i32) -> Option<usize> {
+    crate::kit::chip_at(SCOPES.len(), SCOPES_TOP, x, y)
+}
+
+/// The result row under `y`, scrolled `scroll_px`. None on the band, the chips or empty space.
+pub fn row_at(rows: usize, scroll_px: i32, y: i32) -> Option<usize> {
+    if !(RESULTS_TOP..BOTTOM).contains(&y) {
+        return None;
+    }
+    let i = ((y - RESULTS_TOP + scroll_px.max(0)) / ROW_H) as usize;
+    (i < rows).then_some(i)
+}
+
+pub fn max_scroll(rows: usize) -> i32 {
+    (content_h(rows) - (BOTTOM - RESULTS_TOP)).max(0)
+}
 use crate::text::{self, Family, FontSet, Weight};
 use crate::theme::Theme;
 use crate::widgets::{fill_rect, fit, hline, sty};
@@ -40,6 +82,7 @@ pub fn render(
     total: usize,
     scroll_px: i32,
     sbar_active: bool,
+    scope: usize,
 ) {
     c.fill(t.bg);
     let has = !query.trim().is_empty();
@@ -80,6 +123,16 @@ pub fn render(
         &qs,
     );
 
+    crate::kit::chips_in(
+        c,
+        t,
+        f,
+        SCOPES_TOP,
+        &SCOPES,
+        Some(scope.min(SCOPES.len() - 1)),
+        SCOPES.len(),
+    );
+
     if songs.is_empty() {
         // Say which of the two empty states this is: nothing asked, or nothing found.
         let st = sty(Family::Sans, Weight::Regular, 17.0, t.dim, 0.0);
@@ -88,13 +141,13 @@ pub fn render(
         } else {
             crate::i18n::text("Tap above and start typing.")
         };
-        text::draw(c, f, 26.0, (LIST_TOP + 44) as f32, note, &st);
+        text::draw(c, f, 26.0, (RESULTS_TOP + 36) as f32, note, &st);
         return;
     }
 
-    c.set_clip_y(LIST_TOP, BOTTOM);
+    c.set_clip_y(RESULTS_TOP, BOTTOM);
     let first = (scroll_px.max(0) / ROW_H) as usize;
-    let mut y = LIST_TOP - (scroll_px.max(0) % ROW_H);
+    let mut y = RESULTS_TOP - (scroll_px.max(0) % ROW_H);
     let title_style = sty(
         Family::Sans,
         Weight::SemiBold,

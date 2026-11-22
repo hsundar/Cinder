@@ -31,6 +31,10 @@ level the commit history supports; from `v0.1.6` onward, entries are written as 
   wells or chip boxes, and its actions as words in the accent. Nothing a finger lands on moves.
   *Device-unverified* (host tests, previews and the simulator).
 
+- **Search scopes.** Under the search field, a line of chips (all · songs · albums · artists)
+  keeps only that kind of result; the query stays as you switch, and "all" is the old search,
+  audiobooks included. In every style; in Pivot the chips are words. *Device-unverified.*
+
 - **A shorter Pivot Home, genres and search, motion, and Big view is Pivot.** Home is now music,
   podcasts, audiobooks, fm radio, soundscapes, sound, settings and help (plus SensMe and Preview
   when installed); Bluetooth, USB-DAC, Wi-Fi and Folders open from the top of Settings, in Pivot

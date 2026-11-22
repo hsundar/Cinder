@@ -1743,7 +1743,7 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
                             }),
                     )
                     .collect();
-                cinder_ui::search::render(c, &theme, &fonts, &rows, q, lib.songs.len(), 0, false)
+                cinder_ui::search::render(c, &theme, &fonts, &rows, q, lib.songs.len(), 0, false, 0)
             }),
             ("library_search_button", &|c: &mut Canvas| {
                 library::render(
@@ -4483,6 +4483,7 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
             ("pivot_playlist_pick", Screen::PlaylistPick),
             ("pivot_preview", Screen::Zappin),
             ("pivot_lock", Screen::Lock),
+            ("pivot_search", Screen::Search),
         ] {
             app.go_for_preview(screen);
             let mut c = Canvas::new();

@@ -154,6 +154,7 @@ fn simplifiedchinese(source: &str) -> Option<&'static str> {
         "Album artist" => Some("专辑歌手"),
         "Album · {}" => Some("专辑 · {}"),
         "Albums" => Some("专辑"),
+        "All" => Some("全部"),
         "All four are in use: delete one first" => Some("四个预设均已占用，请先删除一个"),
         "All {} are in use · delete one to save another" => Some("{} 个预设已全部用完 · 删除一个后可再保存"),
         "All {} are in use: delete one first" => Some("{} 个预设已全部用完：请先删除一个"),

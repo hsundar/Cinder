@@ -91,7 +91,7 @@ b16859ac7232a8c3 books_empty_day
 b0ad77e1e676bebd track_info_day
 9f48897e44e04bc5 track_info_delete_day
 a7c453b4ce869b4a lyrics_day
-fd30fe0a5209ec62 search_day
+8023b226cb884896 search_day
 8592e00fc6bdca6e library_search_button_day
 f7680b9d611fcc12 bluetooth_day
 1b4111d8df518243 bluetooth_codec_day
@@ -209,7 +209,7 @@ febb65596d6d5520 books_list_night
 9e61065d72913b00 track_info_night
 20b6a8d8e027bd13 track_info_delete_night
 93edc1522c46537d lyrics_night
-5438cb9456b99389 search_night
+0ae6242e76e18576 search_night
 d5939564b4e91ca4 library_search_button_night
 7537e30d2542ff87 bluetooth_night
 54aa46504ba8f42d bluetooth_codec_night
@@ -515,3 +515,4 @@ db1ef8fc3b7d5aaf pivot_pairing
 442e6162fd52d1e4 pivot_playlist_pick
 692e0318b7bba7ef pivot_preview
 8efbf26b32c424a0 pivot_lock
+7e383e54592ef3fe pivot_search

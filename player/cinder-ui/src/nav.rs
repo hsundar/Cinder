@@ -2038,6 +2038,8 @@ pub struct App {
     /// A section change sliding in: ms left of [`PIVOT_SLIDE_MS`], and the side it comes from
     /// (+1: from the right, after a leftward swipe or a tap on a later name; -1: from the left).
     pivot_slide_ms: u32,
+    /// Search's scope chip (`search::SCOPES`): all, songs, albums or artists. Kept between visits.
+    search_scope: usize,
     pivot_slide_from: i32,
     /// The podcast show open on `Screen::Show` (index into `Library::books`), and its scroll.
     show_view: usize,
@@ -2480,6 +2482,7 @@ impl Default for App {
             pivot_podcasts: false,
             pivot_genres: false,
             pivot_slide_ms: 0,
+            search_scope: crate::search::SCOPE_ALL,
             pivot_slide_from: 1,
             show_view: 0,
             show_scroll_px: 0,
@@ -4187,6 +4190,8 @@ impl App {
             );
             order.extend(self.songs_matching(&q).into_iter().map(Hit::Song));
         }
+        let scope = self.search_scope;
+        order.retain(|h| crate::search::in_scope(scope, *h));
         self.search_order = order;
         self.search_scroll_px = 0;
     }
@@ -4228,11 +4233,7 @@ impl App {
 
     /// The search result at `y`, if any.
     fn search_hit_at(&self, y: i32) -> Option<crate::search::Hit> {
-        if crate::playlist_pick::hit_search(y) {
-            return None;
-        }
-        let r =
-            crate::playlist_pick::hit_track_row(self.search_order.len(), self.search_scroll_px, y)?;
+        let r = crate::search::row_at(self.search_order.len(), self.search_scroll_px, y)?;
         self.search_order.get(r).copied()
     }
 
@@ -4276,15 +4277,22 @@ impl App {
     }
 
     fn search_max_scroll(&self) -> i32 {
-        crate::playlist_pick::tracks_max_scroll(self.search_order.len())
+        crate::search::max_scroll(self.search_order.len())
     }
 
     /// Search: the band edits the query; an artist or album row opens its page, a book plays from
     /// its place (as on the Audiobooks screen), a song row plays that song.
-    fn tap_search(&mut self, y: i32) -> Vec<Action> {
+    fn tap_search(&mut self, x: i32, y: i32) -> Vec<Action> {
         use crate::search::Hit;
         if crate::playlist_pick::hit_search(y) {
             self.open_keyboard(KbPurpose::LibrarySearch);
+            return vec![];
+        }
+        if let Some(scope) = crate::search::scope_at(x, y) {
+            if scope != self.search_scope {
+                self.search_scope = scope;
+                self.search_rebuild();
+            }
             return vec![];
         }
         match self.search_hit_at(y) {
@@ -5914,7 +5922,7 @@ impl App {
             Screen::PlaylistEdit => self.tap_playlist_edit(x, y),
             Screen::PlaylistCover => self.tap_cover_pick(y),
             Screen::ViewEdit => self.tap_view_edit(x, y),
-            Screen::Search => self.tap_search(y),
+            Screen::Search => self.tap_search(x, y),
             Screen::UpNext => {
                 use crate::up_next::Slot;
                 // CLEAR empties what is still to come and is only drawn when something is.
@@ -13708,6 +13716,7 @@ impl App {
                     self.lib.songs.len(),
                     self.search_scroll_px,
                     self.sbar_active(),
+                    self.search_scope,
                 )
             }
             // Shelf is an overlay, never the stack top — render Now Playing as a safe fallback if
@@ -22320,8 +22329,44 @@ mod tests {
         assert_eq!(a.current(), Screen::Search);
 
         let row = song_row(&a).unwrap();
-        let y = crate::playlist_pick::LIST_TOP + row as i32 * crate::playlist_pick::ROW_H + 10;
+        let y = crate::search::RESULTS_TOP + row as i32 * crate::playlist_pick::ROW_H + 10;
         assert_eq!(a.tap(240, y), vec![Action::PlayIndex(want.object_id)]);
+    }
+
+    /// The scope chips keep one kind of result, keep the query, and "all" brings everything back.
+    #[test]
+    fn search_scopes_keep_one_kind_of_result() {
+        use crate::search::{scope_at, Hit, SCOPES_TOP, SCOPE_ALBUMS, SCOPE_ALL, SCOPE_ARTISTS, SCOPE_SONGS};
+        let mut a = App::unlocked();
+        a.set_search_enabled(true);
+        a.push_for_test(Screen::Search);
+        a.search_query = "a".into();
+        a.search_rebuild();
+        let all = a.search_order.len();
+        let kinds = |a: &App| {
+            (
+                a.search_order.iter().any(|h| matches!(h, Hit::Song(_))),
+                a.search_order.iter().any(|h| matches!(h, Hit::Album(_))),
+                a.search_order.iter().any(|h| matches!(h, Hit::Artist(_))),
+            )
+        };
+        assert_eq!(kinds(&a), (true, true, true), "the sample has all three for \"a\"");
+        let chip_x = |i: usize| {
+            let (x, w) = crate::kit::chip_span(i, crate::search::SCOPES.len());
+            x + w / 2
+        };
+        for (scope, want) in [
+            (SCOPE_SONGS, (true, false, false)),
+            (SCOPE_ALBUMS, (false, true, false)),
+            (SCOPE_ARTISTS, (false, false, true)),
+        ] {
+            assert_eq!(scope_at(chip_x(scope), SCOPES_TOP + 5), Some(scope));
+            a.tap(chip_x(scope), SCOPES_TOP + 5);
+            assert_eq!(kinds(&a), want, "scope {scope}");
+            assert_eq!(a.search_query, "a", "the query stays");
+        }
+        a.tap(chip_x(SCOPE_ALL), SCOPES_TOP + 5);
+        assert_eq!(a.search_order.len(), all);
     }
 
     /// Search finds artists and albums by name, ahead of the songs, and their rows open the page.
@@ -22329,7 +22374,7 @@ mod tests {
     fn search_finds_artists_and_albums_and_opens_them() {
         use crate::search::Hit;
         let row_y =
-            |r: usize| crate::playlist_pick::LIST_TOP + r as i32 * crate::playlist_pick::ROW_H + 10;
+            |r: usize| crate::search::RESULTS_TOP + r as i32 * crate::playlist_pick::ROW_H + 10;
         let mut a = App::unlocked();
         a.set_search_enabled(true);
         a.push_for_test(Screen::Library);
