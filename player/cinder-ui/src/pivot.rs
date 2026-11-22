@@ -377,6 +377,12 @@ pub fn heading(c: &mut Canvas, t: &Theme, f: &FontSet, word: &str) {
     c.clear_clip_x();
 }
 
+/// Where the heading's back chevron ends: a slide moves what is right of it and leaves the chevron
+/// where a finger expects it.
+pub fn chevron_right() -> i32 {
+    (LEFT - 2.0) as i32
+}
+
 /// The music's search glyph, at the heading's right end: `(x0, y0, x1, y1)`. Drawn and hit only
 /// when the search component is installed.
 pub fn search_zone() -> (i32, i32, i32, i32) {

@@ -4449,6 +4449,16 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
         let mut c = Canvas::new();
         app.render(&mut c, &fonts, &np);
         save(&c, "pivot_now_playing");
+        // With a cover from the shell: the backdrop behind the page, day and night.
+        let cover =
+            cinder_ui::art::gradient_image(&cinder_ui::theme::Theme::day(), 480, 480, "kind", 1.0);
+        let covered = now_playing::NowPlaying {
+            art_full: Some(&cover),
+            ..np
+        };
+        let mut c = Canvas::new();
+        app.render(&mut c, &fonts, &covered);
+        save(&c, "pivot_now_playing_cover");
         // A book or a podcast playing: ◁ ▷ are 10 s back and 30 s ahead, in every style.
         let spoken = now_playing::NowPlaying { spoken: true, ..np };
         for (name, style) in [

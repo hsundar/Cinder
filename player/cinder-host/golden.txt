@@ -495,6 +495,7 @@ a4ac54e645605116 pivot_books
 09c73a6865d9118f pivot_artist_songs
 a13b0f6d2099ffad pivot_playlist
 8fa729205206c709 pivot_now_playing
+ceb6dc74859466d5 pivot_now_playing_cover
 e8b0a213f68d89dd spoken_pivot
 c469d97f0728f131 spoken_cinder
 b1df4d3f9fac2237 spoken_terminal

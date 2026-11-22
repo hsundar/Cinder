@@ -538,6 +538,9 @@ fn pivot_render(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying, l: &Lay
     let leg = |w: Weight, size: f32, col: Rgb888| s(Family::Legible, w, size, col, 0.0);
     c.fill(t.bg);
     let quiet = idle(np);
+    if !quiet {
+        backdrop(c, t, np);
+    }
     let left = crate::pivot::LEFT;
     // The page block: the artist above a cover that fills the rest of it.
     let name_base = ART_Y as f32 + text::scaled(50.0);
@@ -689,6 +692,24 @@ fn pivot_render(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying, l: &Lay
         toolbar_word(c, f, x, 784.0, &word, &leg(Weight::Regular, 18.0, col));
     }
 }
+
+/// Pivot's backdrop: the cover across the whole width behind the page, faint, fading into the page
+/// before the title so the words over it stay ink on paper. Only from the shell's full-bleed image,
+/// which is drawn as it comes (no scaling, and the square cover keeps the one fitted-size cache).
+fn backdrop(c: &mut Canvas, t: &Theme, np: &NowPlaying) {
+    const FADE: i32 = 140;
+    let Some(img) = np.art_full.filter(|i| i.w == crate::canvas::W && i.h == crate::canvas::W) else {
+        return;
+    };
+    let top = crate::chrome::STATUS_H;
+    art::draw_image(c, t, 0, top, img, BACKDROP_OPACITY);
+    let foot = top + img.h as i32;
+    c.fade_rows_to(foot - FADE, foot, t.bg);
+}
+
+/// How strongly the backdrop shows: enough to colour the page, little enough that the artist's name
+/// and the cover over it read first.
+const BACKDROP_OPACITY: f32 = 0.24;
 
 // ── Terminal ──────────────────────────────────────────────────────────────────────────────────
 //

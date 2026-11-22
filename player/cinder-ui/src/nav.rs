@@ -9095,8 +9095,9 @@ impl App {
     }
 
     /// The Pivot artist page's section: its songs (`true`) or its albums, from the top.
-    fn pivot_artist_show(&mut self, songs: bool) {
+    fn pivot_artist_show(&mut self, songs: bool, from: i32) {
         if self.artist_songs_open != songs {
+            self.pivot_slide(from);
             self.artist_songs_open = songs;
             self.artist_scroll_px = 0;
             self.fling_v = 0.0;
@@ -9153,7 +9154,8 @@ impl App {
         if (pivot::strip_top()..pivot::strip_bottom()).contains(&y) {
             let hit = pivot::words_hit(&self.pivot_words.borrow(), x);
             if let Some(i) = hit.filter(|_| albums > 0) {
-                self.pivot_artist_show(i == 1);
+                // Songs is the name to the right, so it comes in from there; albums from the left.
+                self.pivot_artist_show(i == 1, if i == 1 { 1 } else { -1 });
             }
             return vec![];
         }
@@ -9443,6 +9445,19 @@ impl App {
         let left = self.pivot_slide_ms as f32 / PIVOT_SLIDE_MS as f32;
         let d = PIVOT_SLIDE_PX * left * left * left * self.pivot_slide_from as f32;
         (d.round() as i32, (d / 2.0).round() as i32)
+    }
+
+    /// Shift what a Pivot section screen drew by where its slide has got to: the heading half as
+    /// far as the strip and the rows, and the back chevron not at all.
+    fn pivot_draw_slide(&self, c: &mut Canvas, theme: &Theme) {
+        let (list, head) = self.pivot_slide_dx();
+        if list == 0 {
+            return;
+        }
+        let (top, strip) = (crate::chrome::STATUS_H, crate::pivot::strip_top());
+        let x0 = crate::pivot::chevron_right();
+        c.shift_span_x(x0, crate::canvas::W as i32, top, strip, head, theme.bg);
+        c.shift_rows_x(strip, crate::pivot::list_bottom(), list, theme.bg);
     }
 
     /// Filter the music to a genre (`None`: every genre), dropping what was derived from the old
@@ -10627,7 +10642,7 @@ impl App {
             // The artist page's two sections, the same way; the album and playlist pages have one.
             Screen::Artist if self.pivot() => {
                 if self.artist_page().is_some_and(|p| !p.albums.is_empty()) {
-                    self.pivot_artist_show(!self.artist_songs_open);
+                    self.pivot_artist_show(!self.artist_songs_open, if dir < 0 { 1 } else { -1 });
                 }
                 vec![]
             }
@@ -12572,12 +12587,7 @@ impl App {
                     self.sbar_active(),
                     self.search_enabled,
                 );
-                let (list, head) = self.pivot_slide_dx();
-                if list != 0 {
-                    let top = crate::chrome::STATUS_H;
-                    c.shift_rows_x(top, crate::pivot::strip_top(), head, theme.bg);
-                    c.shift_rows_x(crate::pivot::strip_top(), crate::pivot::list_bottom(), list, theme.bg);
-                }
+                self.pivot_draw_slide(c, &theme);
             }
             Screen::Library => {
                 // Record the tab strip exactly as drawn, so `tap` hits the labels the user sees.
@@ -12662,6 +12672,7 @@ impl App {
                 );
                 *self.pivot_words.borrow_mut() = words;
                 *self.pivot_actions.borrow_mut() = zones;
+                self.pivot_draw_slide(c, &theme);
             }
             Screen::Album => {
                 let flat = self.lib.albums_flat();
@@ -20851,7 +20862,7 @@ mod tests {
         bare_np()
     }
 
-    fn bare_np() -> NowPlaying<'static> {
+    pub(super) fn bare_np() -> NowPlaying<'static> {
         NowPlaying {
             skin: None,
             tape: None,
@@ -29536,6 +29547,8 @@ mod r4_tests {
         assert!(a.artist_songs_open, "a swipe shows the songs");
         a.swipe(-1, 300, 500);
         assert!(!a.artist_songs_open, "and back");
+        assert!(a.pivot_slide_dx().0 != 0, "the artist's sections slide as the music's do");
+        a.tick_dt(1000);
         // An album row opens the album.
         let y = crate::pivot::artist_list_top(a.artist_page().unwrap().albums.len()) + 10;
         a.tap(200, y);
@@ -29674,6 +29687,33 @@ mod r4_tests {
         assert_eq!(a.pivot_slide_dx(), (0, 0));
         a.swipe(1, 300, 500);
         assert!(a.pivot_slide_dx().0 < 0, "a rightward swipe brings it from the left");
+    }
+
+    /// Mid-slide, the heading and rows move but the back chevron stays where a finger expects it.
+    #[test]
+    fn pivot_slide_leaves_the_back_chevron_still() {
+        let fonts = crate::text::FontSet::load();
+        let chevron = |c: &Canvas| {
+            let x1 = crate::pivot::chevron_right() as usize;
+            (crate::chrome::STATUS_H as usize..crate::pivot::strip_top() as usize)
+                .flat_map(|y| c.buf[y * crate::canvas::W..y * crate::canvas::W + x1].to_vec())
+                .collect::<Vec<u32>>()
+        };
+        let mut a = pivot_app();
+        a.open_library_for_test(Tab::Songs);
+        let mut still = Canvas::new();
+        a.render(&mut still, &fonts, &super::tests::bare_np());
+        for dir in [-1, 1] {
+            a.swipe(dir, 300, 500);
+            a.tick_dt(40);
+            assert!(a.pivot_slide_dx().1 != 0, "still sliding");
+            let mut moving = Canvas::new();
+            a.render(&mut moving, &fonts, &super::tests::bare_np());
+            assert!(chevron(&still) == chevron(&moving), "the chevron moved ({dir})");
+            assert!(still.buf != moving.buf, "nothing slid ({dir})");
+            a.tick_dt(1000);
+            a.render(&mut still, &fonts, &super::tests::bare_np());
+        }
     }
 
     #[test]

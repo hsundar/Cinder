@@ -137,20 +137,46 @@ impl Canvas {
     /// Move what is already drawn in rows `y0..y1` sideways by `dx` px, filling the uncovered
     /// edge with `fill`: a slide is drawn whole, then shifted, so nothing it draws needs to know.
     pub fn shift_rows_x(&mut self, y0: i32, y1: i32, dx: i32, fill: Rgb888) {
+        self.shift_span_x(0, W as i32, y0, y1, dx, fill);
+    }
+
+    /// Fade rows `y0..y1` into `fill`: untouched at `y0`, wholly `fill` by `y1`. Lets an image
+    /// drawn as a backdrop end softly instead of on a hard edge.
+    pub fn fade_rows_to(&mut self, y0: i32, y1: i32, fill: Rgb888) {
+        let (a, b) = (y0.clamp(0, H as i32), y1.clamp(0, H as i32));
+        if b <= a {
+            return;
+        }
+        let f = to_u32(fill);
+        let ch = |v: u32, sh: u32| (v >> sh) & 0xff;
+        for y in a..b {
+            // 0..=256: how much of `fill` this row takes.
+            let k = ((y - a + 1) * 256 / (b - a)) as u32;
+            for px in &mut self.buf[y as usize * W..(y as usize + 1) * W] {
+                let mix = |sh: u32| (ch(*px, sh) * (256 - k) + ch(f, sh) * k) >> 8;
+                *px = (*px & 0xff00_0000) | (mix(16) << 16) | (mix(8) << 8) | mix(0);
+            }
+        }
+    }
+
+    /// [`Canvas::shift_rows_x`] for columns `x0..x1` only: what lies outside them stays put.
+    pub fn shift_span_x(&mut self, x0: i32, x1: i32, y0: i32, y1: i32, dx: i32, fill: Rgb888) {
         let (y0, y1) = (y0.clamp(0, H as i32) as usize, y1.clamp(0, H as i32) as usize);
+        let (x0, x1) = (x0.clamp(0, W as i32) as usize, x1.clamp(0, W as i32) as usize);
+        let n = x1.saturating_sub(x0);
         let d = dx.unsigned_abs() as usize;
-        if dx == 0 || d >= W {
+        if dx == 0 || d >= n {
             return;
         }
         let v = to_u32(fill);
         for y in y0..y1 {
-            let row = &mut self.buf[y * W..(y + 1) * W];
+            let row = &mut self.buf[y * W + x0..y * W + x1];
             if dx > 0 {
-                row.copy_within(0..W - d, d);
+                row.copy_within(0..n - d, d);
                 row[..d].fill(v);
             } else {
-                row.copy_within(d..W, 0);
-                row[W - d..].fill(v);
+                row.copy_within(d..n, 0);
+                row[n - d..].fill(v);
             }
         }
     }

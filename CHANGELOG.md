@@ -31,6 +31,10 @@ level the commit history supports; from `v0.1.6` onward, entries are written as 
   wells or chip boxes, and its actions as words in the accent. Nothing a finger lands on moves.
   *Device-unverified* (host tests, previews and the simulator).
 
+- **Pivot polish.** The back chevron stays put while a section slides in; an artist's albums and
+  songs slide between each other as the music's sections do; and Now Playing has the cover behind
+  the page, faint, fading out before the title. *Device-unverified.*
+
 - **Search scopes.** Under the search field, a line of chips (all · songs · albums · artists)
   keeps only that kind of result; the query stays as you switch, and "all" is the old search,
   audiobooks included. In every style; in Pivot the chips are words. *Device-unverified.*
