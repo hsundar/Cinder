@@ -100,11 +100,17 @@ pub fn volume_trimmed(
     let x0 = 24;
     let y0 = crate::chrome::STATUS_H + 12;
     let pill_w = W as i32 - x0 * 2;
+    // Pivot: a band of the page's ground across the glass, no edges; the number in the style's face.
+    let pivot = crate::pivot::on(t);
 
-    fill_rect(c, x0, y0, pill_w, pill_h, t.panel);
-    // Hairline edge only — no full border box; the panel tone already separates it from the art.
-    fill_rect(c, x0, y0, pill_w, 1, t.line);
-    fill_rect(c, x0, y0 + pill_h - 1, pill_w, 1, t.line);
+    if pivot {
+        fill_rect(c, 0, y0, W as i32, pill_h, t.bg);
+    } else {
+        fill_rect(c, x0, y0, pill_w, pill_h, t.panel);
+        // Hairline edge only — no full border box; the panel tone already separates it from the art.
+        fill_rect(c, x0, y0, pill_w, 1, t.line);
+        fill_rect(c, x0, y0 + pill_h - 1, pill_w, 1, t.line);
+    }
 
     let mid = y0 + pill_h / 2;
     icons::sound(
@@ -121,19 +127,24 @@ pub fn volume_trimmed(
     } else {
         format!("{level}")
     };
-    let vst = sty(
-        Family::Mono,
-        Weight::Bold,
-        15.0,
-        if at_floor { t.faint } else { t.ink },
-        0.04,
-    );
+    let vst = if pivot {
+        crate::pivot::face(Weight::Light, 26.0, if at_floor { t.faint } else { t.ink })
+    } else {
+        sty(
+            Family::Mono,
+            Weight::Bold,
+            15.0,
+            if at_floor { t.faint } else { t.ink },
+            0.04,
+        )
+    };
+    let val = if pivot { val.to_lowercase() } else { val };
     let vw = text::measure(f, &val, &vst);
     text::draw(
         c,
         f,
         (x0 + pill_w - 20) as f32 - vw,
-        (mid + 5) as f32,
+        (mid + if pivot { 9 } else { 5 }) as f32,
         &val,
         &vst,
     );
@@ -169,7 +180,7 @@ pub fn volume_trimmed(
     // Level bar fills the space between the icon and the number.
     let bx = x0 + 48;
     let bw = (x0 + pill_w - 32) - bx - vw as i32 - tw2 as i32;
-    let bh = 4;
+    let bh = if pivot { 2 } else { 4 };
     let by = mid - bh / 2;
     if bw > 8 {
         fill_rect(c, bx, by, bw, bh, t.line);
@@ -206,6 +217,17 @@ pub fn volume_minimal(c: &mut Canvas, t: &Theme, level: u8) {
 /// Sized to the text; a long title ends in "…" inside the pill rather than wrapping.
 pub fn toast(c: &mut Canvas, t: &Theme, f: &FontSet, msg: &str) {
     c.begin_layer(); // drawn over the screen on purpose (see `Canvas::begin_layer`)
+    if crate::pivot::on(t) {
+        // Pivot: a band of the page's ground across the glass and the message in its face, the
+        // accent a short rule at its left instead of a box round it.
+        let st = crate::pivot::face(Weight::Regular, 19.0, t.ink);
+        let msg = &crate::widgets::fit(f, msg, &st, (W - 64) as f32);
+        let (y0, ph) = (H as i32 - 96, 44);
+        fill_rect(c, 0, y0, W as i32, ph, t.bg);
+        fill_rect(c, 22, y0 + 10, 3, ph - 20, t.acc);
+        text::draw(c, f, 36.0, (y0 + 29) as f32, msg, &st);
+        return;
+    }
     let st = sty(Family::Sans, Weight::SemiBold, 16.0, t.ink, 0.0);
     let msg = &crate::widgets::fit(f, msg, &st, (W - 64) as f32);
     let tw = text::measure(f, msg, &st);
@@ -236,6 +258,19 @@ pub fn queue_chip(c: &mut Canvas, t: &Theme, f: &FontSet, row_y: i32, progress: 
     let ph = 34;
     let x0 = 330 + (((1.0 - p) * (1.0 - p)) * (W as f32 - 330.0)) as i32;
     let y0 = (row_y - ph / 2).clamp(0, H as i32 - ph);
+    if crate::pivot::on(t) {
+        // Pivot: the word in the accent on the page's ground, sliding off the same way.
+        fill_rect(c, x0, y0, pw, ph, t.bg);
+        text::draw(
+            c,
+            f,
+            (x0 + 12) as f32,
+            (y0 + 24) as f32,
+            &crate::pivot::quiet(crate::i18n::text("+ QUEUED")),
+            &crate::pivot::face(Weight::Regular, 20.0, t.acc),
+        );
+        return;
+    }
     fill_rect(c, x0, y0, pw, ph, t.acc);
     text::draw(
         c,

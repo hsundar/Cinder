@@ -377,7 +377,7 @@ fn drive(
         let s = crate::i18n::text("Not read yet");
         let w = text::measure(f, s, &figs);
         text::draw(c, f, kit::RIGHT as f32 - w, (y + 22) as f32, s, &figs);
-        stroke_rect(c, bx, y + 34, bw, 16, t.ctrl(), 1);
+        meter_track(c, t, bx, y + 34, bw, 16);
         return;
     }
     let used_mb = (total_mb - free_mb.max(0)).max(0);
@@ -385,7 +385,7 @@ fn drive(
     let w = text::measure(f, &right, &figs);
     text::draw(c, f, kit::RIGHT as f32 - w, (y + 22) as f32, &right, &figs);
 
-    stroke_rect(c, bx, y + 34, bw, 16, t.ctrl(), 1);
+    meter_track(c, t, bx, y + 34, bw, 16);
     let inner = bw - 4;
     let total_b = total_mb as u64 * 1_048_576;
     let used_w = (inner as i64 * used_mb as i64 / total_mb.max(1) as i64) as i32;
@@ -490,6 +490,15 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, v: &StorageView, scroll: i
     // Wrapped, not cut: at a large text size it runs past the edge (`--cut 120`).
     let x = kit::LEFT as f32;
     crate::widgets::draw_wrap2(c, f, x, (y + 30) as f32, note, &foot, x + w, 18.0);
+}
+
+/// A meter's track: an outline, or in Pivot a faint ground with no frame.
+fn meter_track(c: &mut Canvas, t: &Theme, x: i32, y: i32, w: i32, h: i32) {
+    if crate::pivot::on(t) {
+        fill_rect(c, x, y, w, h, t.line);
+    } else {
+        stroke_rect(c, x, y, w, h, t.ctrl(), 1);
+    }
 }
 
 #[cfg(test)]

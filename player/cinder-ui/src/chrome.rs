@@ -190,7 +190,13 @@ pub fn status_bar(
         18.0,
         27.0 + (k - 1.0) * 6.0,
         clock,
-        &sty(fam, Weight::Regular, (if pivot { 17.0 } else { 15.0 }) * k, t.dim, if pivot { 0.0 } else { 0.06 }),
+        &sty(
+            fam,
+            Weight::Regular,
+            (if pivot { 17.0 } else { 15.0 }) * k,
+            t.dim,
+            if pivot { 0.0 } else { 0.06 },
+        ),
     );
     // Skip the whole badge when there is no codec string. Drawing it unconditionally left a bare
     // 12px accent-stroked rectangle floating next to the clock whenever nothing was loaded —
@@ -250,7 +256,13 @@ pub fn status_bar(
         // fixed-length nor pure ASCII, which is both halves of what made the banner overrun.
         // Unclamped it drew its outline and text at whatever the font measured, straight through
         // the menu and bookmark glyphs.
-        let bst = sty(fam, Weight::Regular, if pivot { 14.0 } else { 12.0 }, t.acc, if pivot { 0.01 } else { 0.12 });
+        let bst = sty(
+            fam,
+            Weight::Regular,
+            if pivot { 14.0 } else { 12.0 },
+            t.acc,
+            if pivot { 0.01 } else { 0.12 },
+        );
         let bx = cx + 12.0;
         let avail = zone_text_w(bx, right);
         if avail > 0.0 {
@@ -269,7 +281,13 @@ pub fn status_bar(
         // NIGHT rides on the END of the badge, so a long badge pushes it further right than the
         // badge itself ever goes. Drawn only when it fits whole: a clipped "NIGH" says less than
         // nothing, and the glyphs behind it matter more than the label does.
-        let nst = sty(fam, Weight::Regular, if pivot { 14.0 } else { 12.0 }, t.faint, if pivot { 0.01 } else { 0.18 });
+        let nst = sty(
+            fam,
+            Weight::Regular,
+            if pivot { 14.0 } else { 12.0 },
+            t.faint,
+            if pivot { 0.01 } else { 0.18 },
+        );
         let nx2 = nx + 12.0;
         let night = crate::i18n::text("NIGHT");
         let quiet = crate::pivot::quiet(night);
@@ -285,7 +303,13 @@ pub fn status_bar(
     icons::menu(c, MENU_CX, STATUS_MID, MENU_W * k, t.dim);
     icons::bookmark(c, SHELF_CX as f32, STATUS_MID, 23.0 * k, t.dim);
     let batt = format!("{}", battery);
-    let bs = sty(fam, Weight::Regular, (if pivot { 15.0 } else { 13.0 }) * k, t.faint, 0.04);
+    let bs = sty(
+        fam,
+        Weight::Regular,
+        (if pivot { 15.0 } else { 13.0 }) * k,
+        t.faint,
+        0.04,
+    );
     let bwid = text::measure(f, &batt, &bs);
     // The battery's outline keeps its right edge at the nub and grows left and both ways in y.
     let (bw, bh) = ((18.0 * k) as i32, (13.0 * k) as i32);
@@ -592,9 +616,17 @@ fn header_impl(
     let quiet = right.map(crate::pivot::quiet);
     let right = if pivot { quiet.as_deref() } else { right };
     let quiet_short = chip_short.map(crate::pivot::quiet);
-    let chip_short = if pivot { quiet_short.as_deref() } else { chip_short };
+    let chip_short = if pivot {
+        quiet_short.as_deref()
+    } else {
+        chip_short
+    };
     icons::back(c, 30.0, 62.0, BACK_GLYPH * text::touch_scale(), t.dim);
-    let ts = if pivot { pivot_title_style(t.ink) } else { title_style(t.ink) };
+    let ts = if pivot {
+        pivot_title_style(t.ink)
+    } else {
+        title_style(t.ink)
+    };
     let rs = if pivot {
         crate::pivot::face(Weight::Regular, 15.0, t.dim)
     } else {

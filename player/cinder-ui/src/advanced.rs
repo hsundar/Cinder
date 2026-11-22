@@ -282,6 +282,71 @@ fn a_row(
     }
 }
 
+/// A row the Pivot way: the kit's row (no wash, no rule, the value a word, the chosen one in the
+/// accent); a row whose filter is not on this player is all in `faint`, with no control.
+#[allow(clippy::too_many_arguments)]
+fn pivot_row(
+    c: &mut Canvas,
+    t: &Theme,
+    f: &FontSet,
+    a: &Advanced,
+    y: i32,
+    sel: bool,
+    row: usize,
+    label: &str,
+    desc: &str,
+    end: &End,
+) {
+    let label = crate::i18n::text(label);
+    let desc = crate::i18n::text(desc);
+    if dimmed(a, row) {
+        let cy = y + ROW_H() / 2;
+        let avail = (crate::kit::RIGHT - crate::kit::LEFT) as f32;
+        let tst = crate::pivot::face(Weight::Regular, crate::scale::ROW, t.faint);
+        let sst = crate::pivot::face(Weight::Regular, crate::scale::SECONDARY, t.faint);
+        let x = crate::kit::LEFT as f32;
+        text::draw(
+            c,
+            f,
+            x,
+            (cy - 3) as f32,
+            &crate::widgets::fit(f, label, &tst, avail),
+            &tst,
+        );
+        text::draw(
+            c,
+            f,
+            x,
+            (cy + 18) as f32,
+            &crate::widgets::fit(f, desc, &sst, avail),
+            &sst,
+        );
+        return;
+    }
+    use crate::kit::{Row, Trail};
+    let value;
+    let trail = match *end {
+        End::Switch(on) => Trail::Switch(on),
+        End::Pill(v, active) => {
+            value = crate::i18n::text(v);
+            if active {
+                Trail::Tag(value)
+            } else {
+                Trail::Value(value)
+            }
+        }
+        End::Open => Trail::Open(""),
+    };
+    crate::kit::row(
+        c,
+        t,
+        f,
+        y,
+        ROW_H(),
+        &Row::new(label).sub(desc).trail(trail).sel(sel),
+    );
+}
+
 /// What a row ends in.
 enum End {
     Switch(bool),
@@ -491,7 +556,9 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, a: &Advanced, sel: usize, 
         Some(crate::i18n::text("Sound")),
     );
     debug_assert_eq!(y0, TOP, "advanced list top drifted from the hit test");
-    hline(c, y0, t.line);
+    if !crate::pivot::on(t) {
+        hline(c, y0, t.line);
+    }
     let chev = sty(
         Family::Sans,
         Weight::SemiBold,
@@ -507,6 +574,10 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, a: &Advanced, sel: usize, 
             continue;
         }
         let (title, desc, end) = spec(a, r);
+        if crate::pivot::on(t) {
+            pivot_row(c, t, f, a, y, sel == r, r, title, &desc, &end);
+            continue;
+        }
         let cy = a_row(c, t, f, a, y, sel == r, r, title, &desc);
         match end {
             End::Switch(on) => toggle(c, t, 418, cy - 11, 40, 22, 14, on),

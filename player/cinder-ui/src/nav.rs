@@ -508,7 +508,10 @@ pub enum Action {
     /// Play one podcast episode: chapter `chapter` of `Library::books[book]`, from where the
     /// listener left it when that is the episode they were in, else from its start. The episodes
     /// after it follow, as a book's chapters do.
-    PlayEpisode { book: usize, chapter: u32 },
+    PlayEpisode {
+        book: usize,
+        chapter: u32,
+    },
     /// Shuffle one playlist by DB id. Same channel as `PlayPlaylist`, but shuffled — the page's
     /// band needs it and `ShuffleScope::Playlist` picks a RANDOM playlist, which is a different
     /// thing entirely.
@@ -809,6 +812,29 @@ const MENU: [(Screen, &str, &str); 12] = [
         "Help & controls",
         "Buttons, swipes, the way back",
     ),
+];
+
+/// Home in the Pivot style: the hub. What you listen to comes first — music, the podcasts, the
+/// audiobooks, the radio — then the places that change how it sounds, then the player itself, so
+/// the screen reads like a device's front page rather than a settings list. Music is the Library's
+/// own pivot (songs · albums · artists · playlists); podcasts and audiobooks are the two sides of
+/// the spoken-word pivot, which `activate_menu` opens on the side named. `Screen::Show` is the
+/// podcasts word's placeholder, intercepted there like Preview's. Same filters as [`MENU`].
+const PIVOT_HUB: [(Screen, &str, &str); 14] = [
+    (Screen::Library, "Music", ""),
+    (Screen::Show, "Podcasts", ""),
+    (Screen::Books, "Audiobooks", ""),
+    (Screen::Fm, "FM radio", ""),
+    (Screen::Folders, "Folders", ""),
+    (Screen::SensMe, "SensMe", ""),
+    (Screen::Zappin, "Preview", ""),
+    (Screen::Soundscape, "Soundscapes", ""),
+    (Screen::Sound, "Sound", ""),
+    (Screen::Bluetooth, "Bluetooth", ""),
+    (Screen::Wifi, "Wi-Fi", ""),
+    (Screen::UsbDac, "USB-DAC", ""),
+    (Screen::Settings, "Settings", ""),
+    (Screen::Help, "Help & controls", ""),
 ];
 
 /// Each Menu destination's icon (Settings ▸ Menu icons, discussion #53).
@@ -3043,6 +3069,14 @@ impl App {
             // Same reason as Folders: entering has to reset which level is open, or the screen
             // comes back on the channel you were last in with the list's scroll under it.
             Screen::SensMe => self.open_sensme(),
+            // The Pivot hub's podcasts and audiobooks: the spoken-word pivot, on the side named.
+            Screen::Show | Screen::Books => {
+                self.pivot_podcasts = target == Screen::Show;
+                self.books_scroll_px = 0;
+                self.fling_v = 0.0;
+                self.push(Screen::Books);
+                self.note_browse();
+            }
             target => self.push(target),
         }
         vec![]
@@ -4416,7 +4450,9 @@ impl App {
     /// that indexes the Menu — the cursor, the tap, the render — goes through this, so a hidden row
     /// cannot leave the cursor pointing one place and the picture another.
     fn menu_visible(&self) -> Vec<&'static (Screen, &'static str, &'static str)> {
-        MENU.iter()
+        let table: &'static [(Screen, &str, &str)] = if self.pivot() { &PIVOT_HUB } else { &MENU };
+        table
+            .iter()
             .filter(|m| m.0 != Screen::SensMe || self.sensme_enabled)
             .filter(|m| m.0 != Screen::Zappin || self.preview_enabled)
             .filter(|m| m.0 != Screen::Wifi || crate::wifi::installed())
@@ -9204,14 +9240,18 @@ impl App {
             return vec![];
         };
         if let Some(i) = crate::pivot::show_row_at(b, self.show_scroll_px, y) {
-            return self.start_play_action(Action::PlayEpisode { book, chapter: i as u32 });
+            return self.start_play_action(Action::PlayEpisode {
+                book,
+                chapter: i as u32,
+            });
         }
         let last = b.chapters.len().saturating_sub(1) as u32;
         let hit = crate::pivot::action_hit(&self.pivot_actions.borrow(), x, y);
         match hit {
-            Some(0) if !b.chapters.is_empty() => {
-                self.start_play_action(Action::PlayEpisode { book, chapter: last })
-            }
+            Some(0) if !b.chapters.is_empty() => self.start_play_action(Action::PlayEpisode {
+                book,
+                chapter: last,
+            }),
             Some(1) => self.start_play_action(Action::PlayBook(book)),
             _ => vec![],
         }
@@ -10282,11 +10322,13 @@ impl App {
                     lb
                 },
             )),
-            Screen::Show => self
-                .lib
-                .books
-                .get(self.show_view)
-                .map(|b| (crate::pivot::show_max_scroll(b), crate::pivot::show_list_top(), lb)),
+            Screen::Show => self.lib.books.get(self.show_view).map(|b| {
+                (
+                    crate::pivot::show_max_scroll(b),
+                    crate::pivot::show_list_top(),
+                    lb,
+                )
+            }),
             Screen::Books => Some((
                 self.books_max_scroll(),
                 if self.pivot() {
@@ -12360,7 +12402,10 @@ impl App {
                 let sec = self.pivot_section();
                 // Record the strip exactly as drawn, so a tap hits the names the user sees.
                 *self.pivot_zones.borrow_mut() = crate::pivot::strip_layout(fonts, &self.lib, sec);
-                let scroll = if matches!(sec, crate::pivot::Section::Books | crate::pivot::Section::Podcasts) {
+                let scroll = if matches!(
+                    sec,
+                    crate::pivot::Section::Books | crate::pivot::Section::Podcasts
+                ) {
                     self.books_scroll_px
                 } else {
                     self.lib_scroll_px
@@ -13914,6 +13959,7 @@ impl App {
         if let Some(s) = crate::style::Style::from_token(v) {
             self.style = s;
         }
+        self.menu_idx = self.menu_idx.min(self.menu_len().saturating_sub(1));
         crate::text::set_pivot_type(self.pivot());
         if !self.pivot() {
             crate::widgets::set_quiet_line(None);
@@ -13926,6 +13972,8 @@ impl App {
 
     pub fn set_style(&mut self, s: crate::style::Style) {
         self.style = s;
+        // The two styles' Homes list different words; keep the cursor on one of them.
+        self.menu_idx = self.menu_idx.min(self.menu_len().saturating_sub(1));
         crate::text::set_pivot_type(self.pivot());
         if !self.pivot() {
             crate::widgets::set_quiet_line(None);
@@ -29222,8 +29270,17 @@ mod r4_tests {
     /// Draw the screen (the action words are placed when drawn), then tap action `i` on it.
     fn tap_action(a: &mut App, i: usize) -> Vec<Action> {
         let fonts = crate::text::FontSet::load();
-        a.render(&mut Canvas::new(), &fonts, &super::tests::bare_np_for_tests());
-        let (_, x0, y0, x1, y1) = *a.pivot_actions.borrow().iter().find(|z| z.0 == i).expect("that action is drawn");
+        a.render(
+            &mut Canvas::new(),
+            &fonts,
+            &super::tests::bare_np_for_tests(),
+        );
+        let (_, x0, y0, x1, y1) = *a
+            .pivot_actions
+            .borrow()
+            .iter()
+            .find(|z| z.0 == i)
+            .expect("that action is drawn");
         a.tap((x0 + x1) / 2, (y0 + y1) / 2)
     }
 
@@ -29236,10 +29293,19 @@ mod r4_tests {
         assert!(!tap_action(&mut a, 0).is_empty(), "play");
         let before = a.queue_anim_frames;
         let _ = tap_action(&mut a, 2);
-        assert!(a.queue_anim_frames > 0 || before > 0, "add queues the album");
+        assert!(
+            a.queue_anim_frames > 0 || before > 0,
+            "add queues the album"
+        );
         let y = crate::pivot::album_list_top(false) + 10;
-        assert!(a.hold(200, y).is_some_and(|v| !v.is_empty()), "a long press on a track is Play next");
-        assert!(a.swipe(-1, 300, y).is_empty(), "a sideways swipe does not queue in Pivot");
+        assert!(
+            a.hold(200, y).is_some_and(|v| !v.is_empty()),
+            "a long press on a track is Play next"
+        );
+        assert!(
+            a.swipe(-1, 300, y).is_empty(),
+            "a sideways swipe does not queue in Pivot"
+        );
         assert_eq!(a.current(), Screen::Album);
     }
 
@@ -29260,32 +29326,88 @@ mod r4_tests {
         assert_eq!(a.current(), Screen::Album);
     }
 
+    /// Pivot's Home is the hub: music, podcasts and audiobooks lead, each opening its own pivot,
+    /// and Back comes home again.
+    #[test]
+    fn pivot_home_is_a_hub_of_music_podcasts_and_audiobooks() {
+        use crate::pivot::Section;
+        let mut a = pivot_app();
+        a.push_for_test(Screen::Menu);
+        let words: Vec<&str> = a.menu_visible().iter().map(|m| m.1).collect();
+        assert_eq!(&words[..4], ["Music", "Podcasts", "Audiobooks", "FM radio"]);
+        a.activate_menu(1);
+        assert_eq!(
+            (a.current(), a.pivot_section()),
+            (Screen::Books, Section::Podcasts)
+        );
+        a.pop();
+        a.activate_menu(2);
+        assert_eq!(
+            (a.current(), a.pivot_section()),
+            (Screen::Books, Section::Books)
+        );
+        a.pop();
+        a.activate_menu(0);
+        assert_eq!(a.current(), Screen::Library);
+        assert!(!crate::pivot::sections(&a.lib, a.pivot_section()).contains(&Section::Podcasts));
+        // Back in the Cinder style, the Menu keeps its own rows and the cursor stays on one.
+        a.menu_idx = 13;
+        a.set_style(crate::style::Style::Cinder);
+        assert_eq!(a.menu_visible()[0].1, "Library");
+        assert!(a.menu_idx < a.menu_len());
+    }
+
     #[test]
     fn pivot_keeps_podcasts_apart_from_books() {
         let mut a = pivot_app();
         let shows = crate::pivot::shelf(&a.lib, true);
         assert_eq!(shows.len(), 1, "the sample has one show");
-        assert!(crate::pivot::shelf(&a.lib, false).iter().all(|&i| !a.lib.books[i].is_podcast()));
-        let secs = crate::pivot::sections(&a.lib);
-        assert!(secs.contains(&crate::pivot::Section::Books) && secs.contains(&crate::pivot::Section::Podcasts));
+        assert!(crate::pivot::shelf(&a.lib, false)
+            .iter()
+            .all(|&i| !a.lib.books[i].is_podcast()));
+        let secs = crate::pivot::sections(&a.lib, crate::pivot::Section::Books);
+        assert!(
+            secs.contains(&crate::pivot::Section::Books)
+                && secs.contains(&crate::pivot::Section::Podcasts)
+        );
 
         a.open_library_for_test(Tab::Songs);
         a.pivot_go(crate::pivot::Section::Podcasts);
-        assert_eq!((a.current(), a.pivot_section()), (Screen::Books, crate::pivot::Section::Podcasts));
+        assert_eq!(
+            (a.current(), a.pivot_section()),
+            (Screen::Books, crate::pivot::Section::Podcasts)
+        );
         a.tap(60, crate::pivot::list_top() + 10);
         assert_eq!((a.current(), a.show_view), (Screen::Show, shows[0]));
         let last = a.lib.books[shows[0]].chapters.len() as u32 - 1;
         // The rows run newest first, so the top row is the last episode.
         assert_eq!(
             a.tap(60, crate::pivot::show_list_top() + 10),
-            vec![Action::PlayEpisode { book: shows[0], chapter: last }]
+            vec![Action::PlayEpisode {
+                book: shows[0],
+                chapter: last
+            }]
         );
-        assert_eq!(tap_action(&mut a, 0), vec![Action::PlayEpisode { book: shows[0], chapter: last }], "newest");
-        assert_eq!(tap_action(&mut a, 1), vec![Action::PlayBook(shows[0])], "continue");
+        assert_eq!(
+            tap_action(&mut a, 0),
+            vec![Action::PlayEpisode {
+                book: shows[0],
+                chapter: last
+            }],
+            "newest"
+        );
+        assert_eq!(
+            tap_action(&mut a, 1),
+            vec![Action::PlayBook(shows[0])],
+            "continue"
+        );
         // A book row in the books section plays that book, not the row's index.
         a.pop();
         a.pivot_go(crate::pivot::Section::Books);
         let first_book = crate::pivot::shelf(&a.lib, false)[0];
-        assert_eq!(a.tap(60, crate::pivot::list_top() + 10), vec![Action::PlayBook(first_book)]);
+        assert_eq!(
+            a.tap(60, crate::pivot::list_top() + 10),
+            vec![Action::PlayBook(first_book)]
+        );
     }
 }

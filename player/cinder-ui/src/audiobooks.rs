@@ -156,7 +156,15 @@ pub fn render(
         Some(&*sub),
     );
     let y0 = if books {
-        crate::library::tabs(c, t, f, y0, crate::library::Slot::Books, lib.folders_tab, true)
+        crate::library::tabs(
+            c,
+            t,
+            f,
+            y0,
+            crate::library::Slot::Books,
+            lib.folders_tab,
+            true,
+        )
     } else {
         y0
     };

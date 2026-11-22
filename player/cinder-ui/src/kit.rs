@@ -331,7 +331,11 @@ pub fn row(c: &mut Canvas, t: &Theme, f: &FontSet, y: i32, h: i32, r: &Row) -> i
 
     let tst = sty(
         fam(Family::Sans),
-        if pivot { Weight::Regular } else { Weight::SemiBold },
+        if pivot {
+            Weight::Regular
+        } else {
+            Weight::SemiBold
+        },
         crate::scale::ROW,
         if r.sel { t.acc } else { t.ink },
         0.0,
@@ -533,7 +537,14 @@ pub fn primary_button(c: &mut Canvas, t: &Theme, f: &FontSet, y: i32, label: &st
         let label = label.to_lowercase();
         let s = fit(f, &label, &st, (RIGHT - LEFT - 24) as f32);
         let tw = text::measure(f, &s, &st);
-        text::draw(c, f, (W as f32 - tw) / 2.0, (y + BUTTON_H / 2 + 7) as f32, &s, &st);
+        text::draw(
+            c,
+            f,
+            (W as f32 - tw) / 2.0,
+            (y + BUTTON_H / 2 + 7) as f32,
+            &s,
+            &st,
+        );
         return y + BUTTON_H;
     }
     fill_rect(c, LEFT, y, RIGHT - LEFT, BUTTON_H, t.acc);

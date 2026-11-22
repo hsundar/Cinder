@@ -106,6 +106,17 @@ pub fn hit_toggle(x: i32, y: i32) -> bool {
     (cx - 60..cx + 34).contains(&x) && (cy - 22..cy + 22).contains(&y)
 }
 
+/// A switch in the box `(x, y, w, h)`: the older one-off here, the kit's in Pivot (centred on the
+/// same box, so its touch target is where it always was).
+fn switch(c: &mut Canvas, t: &Theme, (x, y, w, h): (i32, i32, i32, i32), on: bool) {
+    if crate::pivot::on(t) {
+        let (kw, kh) = (crate::kit::SWITCH_W, crate::kit::SWITCH_H);
+        crate::kit::switch(c, t, x + w - kw, y + (h - kh) / 2, on);
+    } else {
+        toggle(c, t, x, y, w, h, 12, on);
+    }
+}
+
 pub fn render(
     c: &mut Canvas,
     t: &Theme,
@@ -142,7 +153,7 @@ pub fn render(
             &sty(Family::Sans, Weight::Regular, 13.0, t.faint, 0.0),
         );
         let (lx, ly, lw, lh) = LL_TOGGLE;
-        toggle(c, t, lx, ly, lw, lh, 12, ll);
+        switch(c, t, (lx, ly, lw, lh), ll);
     }
     let onoff = if on {
         crate::i18n::text("ON")
@@ -163,8 +174,7 @@ pub fn render(
             0.12,
         ),
     );
-    let (tx, ty, tw, th) = TOGGLE;
-    toggle(c, t, tx, ty, tw, th, 12, on);
+    switch(c, t, TOGGLE, on);
 
     if on {
         icons::usb(c, 240.0, 232.0, 40.0, t.acc);
@@ -258,8 +268,11 @@ pub fn render(
         // Height tracks the line count, as it did when four lines became three.
         let (bx, by, bw) = (50, 352, 380);
         let bh = 34 + 26 * lines.len() as i32;
-        fill_rect(c, bx, by, bw, bh, t.panel);
-        stroke_rect(c, bx, by, bw, bh, t.line, 1);
+        // Pivot: the lines, with no box round them.
+        if !crate::pivot::on(t) {
+            fill_rect(c, bx, by, bw, bh, t.panel);
+            stroke_rect(c, bx, by, bw, bh, t.line, 1);
+        }
         let ls = sty(Family::Mono, Weight::Regular, 13.0, t.dim, 0.04);
         for (i, ln) in lines.iter().enumerate() {
             text::draw(

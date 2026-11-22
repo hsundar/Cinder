@@ -51,12 +51,18 @@ pub fn render(
     crate::chrome::header(c, t, f, crate::i18n::text("Search"), Some(&caption));
 
     // ── the search band: shows the query, and a tap on it edits it ────────────────────────────
-    fill_rect(c, 0, TOP, crate::canvas::W as i32, SEARCH_H, t.panel);
-    hline(c, TOP + SEARCH_H - 1, t.line);
+    // Pivot: a field is an underline in the accent, not a band.
+    let pv = crate::pivot::on(t);
+    if pv {
+        fill_rect(c, 22, TOP + SEARCH_H - 10, 436, 2, t.acc);
+    } else {
+        fill_rect(c, 0, TOP, crate::canvas::W as i32, SEARCH_H, t.panel);
+        hline(c, TOP + SEARCH_H - 1, t.line);
+    }
     let qs = sty(
         Family::Sans,
         Weight::Regular,
-        17.0,
+        if pv { 20.0 } else { 17.0 },
         if has { t.ink } else { t.faint },
         0.0,
     );
@@ -120,7 +126,9 @@ pub fn render(
             &fit(f, &song.sub, &artist_style, 380.0),
             &artist_style,
         );
-        if song.opens {
+        if pv {
+            // No chevrons or play marks in Pivot: the row is the word.
+        } else if song.opens {
             crate::icons::chevron(c, 440.0, cy as f32, 14.0, t.faint);
         } else {
             crate::icons::play(c, 440.0, cy as f32, 14.0, t.faint);

@@ -316,7 +316,11 @@ pub fn render(
 /// on either steps Off, Preset 1, Preset 2 … for the album or song that is playing.
 fn action_band(c: &mut Canvas, t: &Theme, f: &FontSet, album_sound: Option<(u8, u8)>) {
     let w = crate::canvas::W as i32;
-    fill_rect(c, 0, BOTTOM, w, ACTION_H, t.panel);
+    // Pivot: the actions are accent words on the page — no band, no dividers between them.
+    let pivot = crate::pivot::on(t);
+    if !pivot {
+        fill_rect(c, 0, BOTTOM, w, ACTION_H, t.panel);
+    }
     hline(c, BOTTOM, t.line);
     let st = sty(Family::Mono, Weight::Bold, 13.0, t.acc, 0.14);
     let y = (BOTTOM + ACTION_H / 2 + 6) as f32;
@@ -357,7 +361,9 @@ fn action_band(c: &mut Canvas, t: &Theme, f: &FontSet, album_sound: Option<(u8, 
             );
             for (i, (v, on)) in words.iter().enumerate() {
                 let x0 = third * (i as i32 + 1);
-                fill_rect(c, x0, BOTTOM + 12, 1, ACTION_H - 24, t.line);
+                if !pivot {
+                    fill_rect(c, x0, BOTTOM + 12, 1, ACTION_H - 24, t.line);
+                }
                 let col = if *on { t.acc } else { t.dim };
                 let st = sty(Family::Mono, Weight::Bold, size, col, track);
                 center(c, f, (x0 + third / 2) as f32, y, v, &st);

@@ -120,6 +120,10 @@ pub fn render(
         let b = (*px & 0xff) * 45 / 100;
         *px = (r << 16) | (g << 8) | b;
     }
+    if crate::pivot::on(t) {
+        render_pivot(c, t, f, this_title, this_sub, pins);
+        return;
+    }
     // 2. sheet panel + accent top border
     fill_rect(c, 0, TOP, 480, 800 - TOP, t.bg);
     fill_rect(c, 0, TOP, 480, 1, t.acc);
@@ -263,6 +267,154 @@ pub fn render(
                     (y + SLOT_H / 2 + 5) as f32,
                     "Empty slot \u{2014} tap to pin here",
                     &sty(Family::Sans, Weight::Regular, 15.0, t.faint, 0.0),
+                );
+            }
+        }
+    }
+}
+
+/// The sheet the Pivot way: the same bands and targets, as words on the page's ground — no
+/// boxes, no dashed slots, no filled button. The Pin button is an accent word; a pinned row is its
+/// number in the accent, its name and where it was saved; the forget column is a faint ×.
+fn render_pivot(
+    c: &mut Canvas,
+    t: &Theme,
+    f: &FontSet,
+    this_title: &str,
+    this_sub: &str,
+    pins: &[Option<Pin>; SLOTS],
+) {
+    use crate::pivot::face;
+    fill_rect(c, 0, TOP, 480, 800 - TOP, t.bg);
+    text::draw(
+        c,
+        f,
+        crate::pivot::LEFT,
+        (TOP + 40) as f32,
+        &crate::i18n::text("Shelf").to_lowercase(),
+        &face(Weight::Light, 34.0, t.ink),
+    );
+    right(
+        c,
+        f,
+        458.0,
+        (TOP + 32) as f32,
+        &crate::pivot::quiet(crate::i18n::text("CLOSE ×")),
+        &face(Weight::Regular, 18.0, t.dim),
+    );
+    let cap = face(Weight::Regular, 16.0, t.dim);
+    text::draw(
+        c,
+        f,
+        22.0,
+        caption_y(THIS_Y) as f32,
+        &crate::pivot::quiet(crate::i18n::text("THIS PLACE")),
+        &cap,
+    );
+    let tst = face(Weight::Regular, 20.0, t.ink);
+    let sst = face(Weight::Regular, 14.0, t.dim);
+    text::draw(
+        c,
+        f,
+        22.0,
+        (THIS_Y + 24) as f32,
+        &crate::widgets::fit(f, this_title, &tst, this_text_w(22.0)),
+        &tst,
+    );
+    text::draw(
+        c,
+        f,
+        22.0,
+        (THIS_Y + 44) as f32,
+        &crate::widgets::fit(f, this_sub, &sst, this_text_w(22.0)),
+        &sst,
+    );
+    let (px, py, pw, ph) = PIN_BTN;
+    let pin = face(Weight::Regular, 24.0, t.acc);
+    let pin_word =
+        crate::widgets::fit(f, &crate::i18n::text("Pin").to_lowercase(), &pin, pw as f32);
+    right(
+        c,
+        f,
+        (px + pw) as f32 - 2.0,
+        (py + ph / 2 + 8) as f32,
+        &pin_word,
+        &pin,
+    );
+
+    let filled = pins.iter().filter(|p| p.is_some()).count();
+    text::draw(
+        c,
+        f,
+        22.0,
+        caption_y(SLOT0_Y) as f32,
+        &format!("pinned \u{00b7} {}/{}", filled, SLOTS),
+        &cap,
+    );
+    let num_x = 22.0;
+    let name_x = 52.0;
+    for (i, slot) in pins.iter().enumerate() {
+        let y = SLOT0_Y + i as i32 * SLOT_DY;
+        let mid = SLOT_H / 2;
+        match slot {
+            Some(p) => {
+                text::draw(
+                    c,
+                    f,
+                    num_x,
+                    (y + mid + 7) as f32,
+                    &format!("{}", i + 1),
+                    &face(Weight::Light, 22.0, t.acc),
+                );
+                let pst = face(Weight::Regular, 19.0, t.ink);
+                let avail = (CLEAR_X as f32 - 12.0 - name_x).max(0.0);
+                text::draw(
+                    c,
+                    f,
+                    name_x,
+                    (y + mid - 2) as f32,
+                    &crate::widgets::fit(f, p.title, &pst, avail),
+                    &pst,
+                );
+                text::draw(
+                    c,
+                    f,
+                    name_x,
+                    (y + mid + 17) as f32,
+                    &crate::widgets::fit(f, p.sub, &sst, avail),
+                    &sst,
+                );
+                center(
+                    c,
+                    f,
+                    ((CLEAR_X + 458) / 2) as f32,
+                    (y + mid + 8) as f32,
+                    "\u{00d7}",
+                    &face(Weight::Light, 26.0, t.faint),
+                );
+            }
+            None => {
+                text::draw(
+                    c,
+                    f,
+                    num_x,
+                    (y + mid + 7) as f32,
+                    &format!("{}", i + 1),
+                    &face(Weight::Light, 22.0, t.faint),
+                );
+                let hint = face(Weight::Regular, 17.0, t.faint);
+                text::draw(
+                    c,
+                    f,
+                    name_x,
+                    (y + mid + 6) as f32,
+                    &crate::widgets::fit(
+                        f,
+                        crate::i18n::text("Empty slot \u{2014} tap to pin here"),
+                        &hint,
+                        458.0 - name_x,
+                    ),
+                    &hint,
                 );
             }
         }

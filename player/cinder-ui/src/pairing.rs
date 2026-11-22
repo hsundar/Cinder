@@ -176,8 +176,12 @@ pub fn render_prompt(c: &mut Canvas, t: &Theme, f: &FontSet, p: &Prompt) {
             c.blend(x, y, t.bg, 200);
         }
     }
+    // Pivot: a quiet sheet, no accent frame; its buttons are words.
+    let pv = crate::pivot::on(t);
     fill_rect(c, px, py, pw, ph, t.panel);
-    stroke_rect(c, px, py, pw, ph, t.acc, 1);
+    if !pv {
+        stroke_rect(c, px, py, pw, ph, t.acc, 1);
+    }
     let title = if p.kind == PROMPT_PASSKEY {
         crate::i18n::text("PASSKEY")
     } else {
@@ -225,7 +229,9 @@ pub fn render_prompt(c: &mut Canvas, t: &Theme, f: &FontSet, p: &Prompt) {
     let (nx, ny, nw, nh) = PP_NO;
     if p.kind == PROMPT_PASSKEY {
         // One button, spanning where the pair would be: there is nothing to accept.
-        stroke_rect(c, ox, oy, nx + nw - ox, oh, t.line, 1);
+        if !pv {
+            stroke_rect(c, ox, oy, nx + nw - ox, oh, t.line, 1);
+        }
         center(
             c,
             f,
@@ -241,16 +247,26 @@ pub fn render_prompt(c: &mut Canvas, t: &Theme, f: &FontSet, p: &Prompt) {
             ),
         );
     } else {
-        fill_rect(c, ox, oy, ow, oh, t.acc);
+        if !pv {
+            fill_rect(c, ox, oy, ow, oh, t.acc);
+        }
         center(
             c,
             f,
             (ox + ow / 2) as f32,
             (oy + oh / 2 + 5) as f32,
             crate::i18n::text("YES, PAIR"),
-            &sty(Family::Sans, Weight::Bold, 16.0, t.acc_ink, 0.0),
+            &sty(
+                Family::Sans,
+                Weight::Bold,
+                if pv { crate::scale::ROW + 2.0 } else { 16.0 },
+                if pv { t.acc } else { t.acc_ink },
+                0.0,
+            ),
         );
-        stroke_rect(c, nx, ny, nw, nh, t.line, 1);
+        if !pv {
+            stroke_rect(c, nx, ny, nw, nh, t.line, 1);
+        }
         center(
             c,
             f,
@@ -347,7 +363,9 @@ fn row(
         // button. Sizing the box to the label would leave a silent dead band beside it.
         let col = if right_accent { t.acc } else { t.dim };
         let s = sty(Family::Mono, Weight::Regular, 12.0, col, 0.1);
-        stroke_rect(c, 458 - FORGET_W, cy - 13, FORGET_W, 26, col, 1);
+        if !crate::pivot::on(t) {
+            stroke_rect(c, 458 - FORGET_W, cy - 13, FORGET_W, 26, col, 1);
+        }
         center(
             c,
             f,
@@ -382,8 +400,12 @@ pub fn render(
 
     // Scan panel. This replaced a decorative NFC card: tap-to-pair isn't wired, so the most useful
     // thing this space can hold is the control that does work.
-    fill_rect(c, 22, CARD_Y, 436, CARD_H, t.panel);
-    stroke_rect(c, 22, CARD_Y, 436, CARD_H, t.line, 1);
+    // Pivot: no card; the line and its SCAN word stand on the page.
+    let pv = crate::pivot::on(t);
+    if !pv {
+        fill_rect(c, 22, CARD_Y, 436, CARD_H, t.panel);
+        stroke_rect(c, 22, CARD_Y, 436, CARD_H, t.line, 1);
+    }
     // Both lines end 12 px short of the SCAN button, not at the card's edge: at 120% and up the
     // hint ran under the button (found by the text audit in `tests/ui_overflow.rs`).
     let text_end = (SCAN_BTN.0 - 12) as f32;
@@ -433,7 +455,9 @@ pub fn render(
         text_end,
     );
     let (sx, sy, sw, sh) = SCAN_BTN;
-    if scanning {
+    if pv {
+        // The word is the button: its whole box still answers the tap.
+    } else if scanning {
         fill_rect(c, sx, sy, sw, sh, t.acc);
     } else {
         stroke_rect(c, sx, sy, sw, sh, t.acc, 1);
@@ -443,16 +467,23 @@ pub fn render(
         f,
         (sx + sw / 2) as f32,
         (sy + sh / 2 + 4) as f32,
-        if scanning {
-            crate::i18n::text("STOP")
-        } else {
-            crate::i18n::text("SCAN")
+        &{
+            let w = if scanning {
+                crate::i18n::text("STOP")
+            } else {
+                crate::i18n::text("SCAN")
+            };
+            if pv {
+                w.to_lowercase()
+            } else {
+                w.to_string()
+            }
         },
         &sty(
             Family::Sans,
             Weight::SemiBold,
-            15.0,
-            if scanning { t.acc_ink } else { t.acc },
+            if pv { 20.0 } else { 15.0 },
+            if scanning && !pv { t.acc_ink } else { t.acc },
             0.04,
         ),
     );
@@ -484,7 +515,9 @@ pub fn render(
     );
     if pages > 1 {
         let (mx, my, mw, mh) = MORE_BTN;
-        stroke_rect(c, mx, my, mw, mh, t.acc, 1);
+        if !pv {
+            stroke_rect(c, mx, my, mw, mh, t.acc, 1);
+        }
         center(
             c,
             f,

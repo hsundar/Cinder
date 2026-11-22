@@ -130,9 +130,13 @@ pub struct EditView<'a> {
 }
 
 fn row(c: &mut Canvas, t: &Theme, f: &FontSet, y: i32, s: &SongRow, lifted: bool) {
+    // Pivot keeps the lifted row's ground (it floats over the others) but not its accent rules.
+    let pv = crate::pivot::on(t);
     if lifted {
-        fill_rect(c, 0, y, W as i32, RH(), t.row_sel);
-        hline(c, y, t.acc);
+        fill_rect(c, 0, y, W as i32, RH(), if pv { t.bg } else { t.row_sel });
+        if !pv {
+            hline(c, y, t.acc);
+        }
     }
     let cy = y + RH() / 2;
     icons::grip(
@@ -167,7 +171,9 @@ fn row(c: &mut Canvas, t: &Theme, f: &FontSet, y: i32, s: &SongRow, lifted: bool
         12.0,
         t.faint,
     );
-    hline(c, y + RH() - 1, if lifted { t.acc } else { t.line });
+    if !(pv && lifted) {
+        hline(c, y + RH() - 1, if lifted { t.acc } else { t.line });
+    }
 }
 
 pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, v: &EditView) {

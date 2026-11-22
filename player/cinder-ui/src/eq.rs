@@ -153,30 +153,44 @@ pub fn render(
     let plabel = crate::ui_format!("CUSTOM {}", preset);
     let ps = sty(Family::Mono, Weight::Regular, 12.0, t.acc, 0.12);
     let pw = text::measure(f, &plabel, &ps) as i32 + 18;
-    stroke_rect(c, 458 - pw, 52, pw, 26, t.acc, 1);
+    // Pivot: no boxes — the preset's name is an accent word, and so is the chosen pill below.
+    let pv = crate::pivot::on(t);
+    if !pv {
+        stroke_rect(c, 458 - pw, 52, pw, 26, t.acc, 1);
+    }
     text::draw(c, f, (458 - pw + 9) as f32, 69.0, &plabel, &ps);
 
     // preset pills row — laid out by `preset_rect`, the same helper the hit test uses.
     for (i, (name, _)) in EQ_PRESETS.iter().enumerate() {
         let on = *name == preset;
-        let st = sty(
-            Family::Mono,
-            Weight::Regular,
-            12.0,
-            if on { t.acc_ink } else { t.dim },
-            0.08,
-        );
+        let st = if pv {
+            crate::pivot::face(Weight::Regular, 17.0, if on { t.acc } else { t.dim })
+        } else {
+            sty(
+                Family::Mono,
+                Weight::Regular,
+                12.0,
+                if on { t.acc_ink } else { t.dim },
+                0.08,
+            )
+        };
         let (px, py, pw, ph) = preset_rect(i);
-        if on {
-            fill_rect(c, px, py, pw, ph, t.acc);
+        if !pv {
+            if on {
+                fill_rect(c, px, py, pw, ph, t.acc);
+            }
+            stroke_rect(c, px, py, pw, ph, if on { t.acc } else { t.line }, 1);
         }
-        stroke_rect(c, px, py, pw, ph, if on { t.acc } else { t.line }, 1);
         crate::widgets::center(
             c,
             f,
             (px + pw / 2) as f32,
             (py + ph / 2 + 4) as f32,
-            crate::i18n::text(name),
+            &if pv {
+                crate::pivot::quiet(crate::i18n::text(name))
+            } else {
+                crate::i18n::text(name).into()
+            },
             &st,
         );
     }

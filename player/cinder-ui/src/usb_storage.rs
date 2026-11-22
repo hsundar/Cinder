@@ -93,9 +93,16 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet) {
 
     icons::usb(c, cx, (cy - 120) as f32, 44.0, t.acc);
 
+    let pivot = crate::pivot::on(t);
     let title = crate::i18n::text("USB Storage");
-    let tst = sty(Family::Sans, Weight::ExtraBold, 29.0, t.ink, -0.01);
-    crate::widgets::center(c, f, cx, (cy - 40) as f32, title, &tst);
+    if pivot {
+        // Pivot: the name in large light type, in lower case.
+        let tst = crate::pivot::face(Weight::Light, 40.0, t.ink);
+        crate::widgets::center(c, f, cx, (cy - 40) as f32, &title.to_lowercase(), &tst);
+    } else {
+        let tst = sty(Family::Sans, Weight::ExtraBold, 29.0, t.ink, -0.01);
+        crate::widgets::center(c, f, cx, (cy - 40) as f32, title, &tst);
+    }
 
     let st = body_style(t);
     let (lines, btn_y) = layout(f, &st);
@@ -106,6 +113,14 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet) {
     // TURN OFF button (also reachable via the physical Back button)
     DRAWN_Y.with(|d| d.set(btn_y));
     let (bx, by, bw, bh) = off_btn();
+    if pivot {
+        // An accent outline round the word, as the kit's primary button is drawn in Pivot.
+        crate::widgets::stroke_rect(c, bx, by, bw, bh, t.acc, 2);
+        let bst = crate::pivot::face(Weight::Regular, 22.0, t.acc);
+        let label = crate::i18n::text("TURN OFF").to_lowercase();
+        crate::widgets::center(c, f, cx, (by + bh / 2 + 7) as f32, &label, &bst);
+        return;
+    }
     fill_rect(c, bx, by, bw, bh, t.acc);
     let bst = sty(Family::Sans, Weight::ExtraBold, 19.0, t.acc_ink, 0.06);
     crate::widgets::center(

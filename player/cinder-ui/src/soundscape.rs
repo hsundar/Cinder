@@ -328,9 +328,32 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, sel: usize, v: &View) {
             .sel(sel == SEL_SWITCH),
     );
     kit::section_label(c, t, f, SOUND_LABEL(), crate::i18n::text("SOUND"), None);
+    let pv = crate::pivot::on(t);
     for (i, (id, name)) in SOUNDS.iter().enumerate() {
         let (x, y, w) = chip_rect(i);
         let chosen = *id == v.sound;
+        if pv {
+            // Pivot: a grid of words in the chips' cells. Playing is the accent; chosen but
+            // switched off is ink; the rest dim. The button cursor underlines its word.
+            let col = if chosen && v.on {
+                t.acc
+            } else if chosen {
+                t.ink
+            } else {
+                t.dim
+            };
+            let st = crate::pivot::face(Weight::Regular, crate::scale::SECONDARY + 3.0, col);
+            let name = crate::i18n::text(name).to_lowercase();
+            let s = fit(f, &name, &st, (w - 16) as f32);
+            let tw = text::measure(f, &s, &st);
+            let tx = x as f32 + (w as f32 - tw) / 2.0;
+            let base = y + kit::CHIP_H / 2 + 7;
+            text::draw(c, f, tx, base as f32, &s, &st);
+            if sel == SEL_FIRST_CHIP + i {
+                fill_rect(c, tx as i32, base + 5, tw as i32, 2, t.ink);
+            }
+            continue;
+        }
         // The chosen sound stays marked while switched off, outlined rather than filled: it is
         // what the switch will bring back, not what is playing.
         if chosen && v.on {
@@ -413,7 +436,7 @@ fn level_row(
 ) {
     let (x0, sw) = slider();
     let cy = if stacked() {
-        if sel {
+        if sel && !crate::pivot::on(t) {
             fill_rect(c, 0, y, W as i32, kit::ROW_H(), t.row_sel);
         }
         // kit::row's title, without its divider: the label and its slider are one row.

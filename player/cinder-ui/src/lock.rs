@@ -38,6 +38,10 @@ fn centered(c: &mut Canvas, f: &FontSet, baseline: f32, s: &str, st: &TextStyle)
 
 pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, l: &Lock) {
     c.fill(t.bg);
+    if crate::pivot::on(t) {
+        render_pivot(c, t, f, l);
+        return;
+    }
 
     // big clock, centred in the body
     centered(
@@ -90,6 +94,54 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, l: &Lock) {
             crate::widgets::center(c, f, 240.0, 777.0, second, &hs);
         }
         _ => hint_line(c, t, f, hint, 775.0, &hs),
+    }
+}
+
+/// The lock screen the Pivot way: everything set from the left margin, low on the glass — a huge
+/// light clock, the song under it, a hairline of progress in the accent, and the hint at the foot.
+fn render_pivot(c: &mut Canvas, t: &Theme, f: &FontSet, l: &Lock) {
+    use crate::pivot::face;
+    let x = crate::pivot::LEFT;
+    let room = 480.0 - x - SIDE_MARGIN;
+    let line = |c: &mut Canvas, base: f32, s: &str, st: &TextStyle| {
+        let s = crate::widgets::fit(f, s, st, room);
+        text::draw(c, f, x, base, &s, st);
+    };
+    line(c, 560.0, l.big_clock, &face(Weight::Light, 104.0, t.ink));
+    line(c, 610.0, l.title, &face(Weight::Regular, 24.0, t.ink));
+    line(c, 638.0, l.artist, &face(Weight::Regular, 18.0, t.dim));
+    let (px, py) = (x as i32, 660);
+    let pw = (480.0 - x - SIDE_MARGIN) as i32;
+    fill_rect(c, px, py, pw, 2, t.line);
+    fill_rect(
+        c,
+        px,
+        py,
+        (pw as f32 * l.progress.clamp(0.0, 1.0)) as i32,
+        2,
+        t.acc,
+    );
+
+    let hint = crate::i18n::text(if l.keys_locked {
+        "Hold lock · side keys locked · slide Hold off"
+    } else {
+        "Hold lock · side keys active · slide Hold off"
+    });
+    let hs = face(Weight::Regular, 15.0, t.dim);
+    let glyph = 21.0;
+    match hint.rsplit_once(" · ") {
+        Some((first, second)) if glyph + text::measure(f, hint, &hs) > room => {
+            icons::lock(c, x + 6.0, 751.0, 13.0, t.faint);
+            let a = crate::widgets::fit(f, first, &hs, room - glyph);
+            text::draw(c, f, x + glyph, 755.0, &a, &hs);
+            let b = crate::widgets::fit(f, second, &hs, room);
+            text::draw(c, f, x, 777.0, &b, &hs);
+        }
+        _ => {
+            icons::lock(c, x + 6.0, 771.0, 13.0, t.faint);
+            let a = crate::widgets::fit(f, hint, &hs, room - glyph);
+            text::draw(c, f, x + glyph, 775.0, &a, &hs);
+        }
     }
 }
 

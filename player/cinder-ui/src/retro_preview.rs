@@ -204,6 +204,13 @@ pub fn render(
 ) {
     c.fill(t.bg);
     crate::chrome::header(c, t, f, crate::i18n::text("Preview"), None);
+    if crate::pivot::on(t) {
+        render_pivot(
+            c, t, f, title, artist, preview_ms, active, completed, playing, source, start_ms,
+            has_queue, elapsed_ms, length_ms, current, total,
+        );
+        return;
+    }
 
     // Silver MiniDisc cartridge: squared metal shell, inset rim, shutter groove and a static disc
     // window. The silhouette stays recognizable at every UI scale; only its lettering scales.
@@ -451,6 +458,281 @@ pub fn render(
         true,
     );
     button(
+        c,
+        t,
+        f,
+        END_RECT,
+        crate::i18n::text("END PREVIEW"),
+        false,
+        true,
+    );
+}
+
+/// A control the Pivot way: its words in its own cell, from the cell's left edge — the accent when
+/// it is the chosen one, ink when it can be pressed, dim when not. No fill, no box.
+fn word(
+    c: &mut Canvas,
+    t: &Theme,
+    f: &FontSet,
+    rect: Rect,
+    label: &str,
+    selected: bool,
+    enabled: bool,
+) {
+    let col = if selected {
+        t.acc
+    } else if enabled {
+        t.ink
+    } else {
+        t.dim
+    };
+    // The largest size that fits the cell whole, down to 18; past that it is fitted.
+    let label = crate::pivot::quiet(label);
+    let room = rect.w as f32 - 4.0;
+    let st = [26.0, 24.0, 22.0, 20.0, 18.0]
+        .into_iter()
+        .map(|size| crate::pivot::face(Weight::Regular, size, col))
+        .find(|st| crate::text::measure(f, &label, st) <= room)
+        .unwrap_or_else(|| crate::pivot::face(Weight::Regular, 18.0, col));
+    let s = widgets::fit(f, &label, &st, room);
+    crate::text::draw(
+        c,
+        f,
+        rect.x as f32,
+        rect.y as f32 + rect.h as f32 / 2.0 + 9.0,
+        &s,
+        &st,
+    );
+}
+
+/// The Preview page the Pivot way: no cartridge. Where it stood, the state as a caption, the song
+/// large, what the sample is in small lines, and the sample's time big and light with a hairline of
+/// progress; under it the same controls in the same cells, as words.
+#[allow(clippy::too_many_arguments)]
+fn render_pivot(
+    c: &mut Canvas,
+    t: &Theme,
+    f: &FontSet,
+    title: &str,
+    artist: &str,
+    preview_ms: u32,
+    active: bool,
+    completed: bool,
+    playing: bool,
+    source: Option<crate::zappin::StartSource>,
+    start_ms: Option<u64>,
+    has_queue: bool,
+    elapsed_ms: u32,
+    length_ms: u32,
+    current: u32,
+    total: u32,
+) {
+    use crate::pivot::face;
+    let lx = crate::pivot::LEFT;
+    let right = (CART.x + CART.w) as f32;
+    // Stacked by the type's own scaled sizes, so nothing meets at 140 %.
+    let sc = crate::text::scaled;
+    let cap_y = CART.y as f32 + sc(16.0);
+    let title_y = cap_y + sc(36.0);
+    let artist_y = title_y + sc(26.0);
+    let info_y = artist_y + sc(28.0);
+    let state = if active {
+        crate::i18n::text("PREVIEWING")
+    } else if completed {
+        crate::i18n::text("ROUND COMPLETE")
+    } else if !has_queue {
+        crate::i18n::text("UP NEXT IS EMPTY")
+    } else {
+        crate::i18n::text("READY TO PREVIEW")
+    };
+    let label = if (active || completed) && total > 0 {
+        format!("{} \u{b7} {current}/{total}", crate::pivot::quiet(state))
+    } else {
+        crate::pivot::quiet(state).into_owned()
+    };
+    widgets::draw_fit(
+        c,
+        f,
+        lx,
+        cap_y,
+        &label,
+        &face(Weight::Regular, 18.0, t.acc),
+        right,
+    );
+    let sub = face(Weight::Regular, 18.0, t.dim);
+    if title.is_empty() {
+        let hint = crate::i18n::text("Start an album or playlist");
+        widgets::draw_fit(
+            c,
+            f,
+            lx,
+            title_y,
+            hint,
+            &face(Weight::Light, 30.0, t.ink),
+            right,
+        );
+    } else {
+        widgets::draw_fit(
+            c,
+            f,
+            lx,
+            title_y,
+            title,
+            &face(Weight::Light, 34.0, t.ink),
+            right,
+        );
+        widgets::draw_fit(c, f, lx, artist_y, artist, &sub, right);
+    }
+    let info = face(Weight::Regular, 16.0, t.dim);
+    let mut lines: Vec<String> = Vec::new();
+    if active {
+        lines.push(
+            match source {
+                Some(crate::zappin::StartSource::Sabi) => crate::i18n::text("Chorus start"),
+                Some(crate::zappin::StartSource::FixedFallback) => {
+                    crate::i18n::text("Fixed position")
+                }
+                Some(crate::zappin::StartSource::UnknownDurationFromStart) => {
+                    crate::i18n::text("Unknown duration")
+                }
+                None => crate::i18n::text("Loading the next song"),
+            }
+            .to_string(),
+        );
+        if let Some(ms) = start_ms {
+            lines.push(format!(
+                "{} {}",
+                crate::i18n::text("Start position"),
+                time(ms)
+            ));
+        }
+        if length_ms != preview_ms {
+            lines.push(format!(
+                "{} {}s \u{b7} {} {}s",
+                crate::pivot::quiet(crate::i18n::text("NOW")),
+                length_ms / 1_000,
+                crate::pivot::quiet(crate::i18n::text("NEXT PREVIEW")),
+                preview_ms / 1_000,
+            ));
+        }
+    } else if !completed && has_queue {
+        lines = crate::track_info::wrap(
+            f,
+            crate::i18n::text("Preview will not change your queue"),
+            &info,
+            right - lx,
+        )
+        .into_iter()
+        .take(2)
+        .map(|l| l.trim_end().to_string())
+        .collect();
+    }
+    let line_h = sc(20.0);
+    let shown = lines.len().min(3);
+    for (i, line) in lines.iter().take(3).enumerate() {
+        widgets::draw_fit(c, f, lx, info_y + i as f32 * line_h, line, &info, right);
+    }
+    let last = if shown == 0 {
+        artist_y
+    } else {
+        info_y + (shown - 1) as f32 * line_h
+    };
+    // The one live number, where the LCD was.
+    let big = if active {
+        format!(
+            "{} / {}",
+            time(u64::from(elapsed_ms.min(length_ms))),
+            time(u64::from(length_ms))
+        )
+    } else if completed {
+        crate::pivot::quiet(crate::i18n::text("PASS FINISHED")).into_owned()
+    } else if has_queue {
+        crate::pivot::quiet(crate::i18n::text("PRESS START")).into_owned()
+    } else {
+        crate::pivot::quiet(crate::i18n::text("ADD SONGS TO UP NEXT")).into_owned()
+    };
+    let size = if active { 40.0 } else { 26.0 };
+    // Under the last line, and clear of the length words below.
+    let big_y = (last + sc(size + 6.0)).min((SHORT_RECT.y - 14) as f32);
+    widgets::draw_fit(
+        c,
+        f,
+        lx,
+        big_y,
+        &big,
+        &face(Weight::Light, size, t.ink),
+        right,
+    );
+    if active && length_ms > 0 {
+        let by = (big_y as i32 + 10).min(SHORT_RECT.y - 4);
+        let (bx, bw) = (lx as i32, CART.x + CART.w - lx as i32);
+        fill_rect(c, bx, by, bw, 2, t.line);
+        let width = ((elapsed_ms.min(length_ms) as u64 * bw as u64) / length_ms as u64) as i32;
+        if width > 0 {
+            fill_rect(c, bx, by, width, 2, t.acc);
+        }
+    }
+
+    let short = preview_ms == 4_000;
+    word(
+        c,
+        t,
+        f,
+        SHORT_RECT,
+        crate::i18n::text("4 SECONDS"),
+        short,
+        true,
+    );
+    word(
+        c,
+        t,
+        f,
+        LONG_RECT,
+        crate::i18n::text("15 SECONDS"),
+        !short,
+        true,
+    );
+    if !active {
+        word(
+            c,
+            t,
+            f,
+            START_RECT,
+            crate::i18n::text("START"),
+            has_queue,
+            has_queue,
+        );
+        return;
+    }
+    word(
+        c,
+        t,
+        f,
+        PREV_RECT,
+        crate::i18n::text("PREVIOUS"),
+        false,
+        true,
+    );
+    word(
+        c,
+        t,
+        f,
+        PLAY_RECT,
+        crate::i18n::text(if playing { "PAUSE" } else { "RESUME" }),
+        true,
+        true,
+    );
+    word(c, t, f, NEXT_RECT, crate::i18n::text("NEXT"), false, true);
+    word(
+        c,
+        t,
+        f,
+        FULL_RECT,
+        crate::i18n::text("PLAY THIS SONG IN FULL"),
+        false,
+        true,
+    );
+    word(
         c,
         t,
         f,

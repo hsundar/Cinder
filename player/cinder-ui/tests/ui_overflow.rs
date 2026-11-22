@@ -918,7 +918,14 @@ fn pivot_screens_stay_on_the_panel_with_their_text_apart() {
             a.open_library_for_test(tab);
             cases.push((format!("Library {tab:?}"), a));
         }
-        for s in [Screen::Menu, Screen::Books, Screen::Album, Screen::Artist, Screen::Playlist, Screen::Show] {
+        for s in [
+            Screen::Menu,
+            Screen::Books,
+            Screen::Album,
+            Screen::Artist,
+            Screen::Playlist,
+            Screen::Show,
+        ] {
             let mut a = at(s);
             a.set_style(cinder_ui::style::Style::Pivot);
             cases.push((format!("{s:?}"), a));
@@ -937,11 +944,18 @@ fn pivot_screens_stay_on_the_panel_with_their_text_apart() {
                     bad.push(format!("{what} [{label}] @ {pct}%: {n} px past the margin"));
                 }
                 for (x, y, px) in collisions_of(&mut a, &fonts, &np) {
-                    bad.push(format!("{what} [{label}] @ {pct}%: {x:?} × {y:?} ({px} px)"));
+                    bad.push(format!(
+                        "{what} [{label}] @ {pct}%: {x:?} × {y:?} ({px} px)"
+                    ));
                 }
             }
         }
     }
     let _restore = scale_lock(cinder_ui::text::SCALE_DEFAULT_IDX);
-    assert!(bad.is_empty(), "Pivot screens overflow ({}):\n  {}", bad.len(), bad.join("\n  "));
+    assert!(
+        bad.is_empty(),
+        "Pivot screens overflow ({}):\n  {}",
+        bad.len(),
+        bad.join("\n  ")
+    );
 }

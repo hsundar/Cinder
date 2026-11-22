@@ -31,6 +31,18 @@ level the commit history supports; from `v0.1.6` onward, entries are written as 
   wells or chip boxes, and its actions as words in the accent. Nothing a finger lands on moves.
   *Device-unverified* (host tests, previews and the simulator).
 
+- **Pivot's Home is a hub, and the old look is gone from it.** Home lists music, podcasts,
+  audiobooks and fm radio first, then folders, soundscapes, sound, bluetooth, usb-dac, settings and
+  help. Music is its own pivot (songs, albums, artists, playlists, and folders when that tab is on);
+  podcasts and audiobooks are the two sides of a "spoken word" pivot, each opened from its Home
+  word. Every screen that drew its own boxes, filled buttons, tiles or bold labels now has a Pivot
+  arm: FM, EQ, Sound, Soundscapes, SensMe, Advanced, the visualiser, Folders, the genre filter,
+  the clock, Bluetooth and pairing, USB-DAC, USB storage, add to playlist, search, the keyboard,
+  the Shelf, the quick panel, confirmations, the volume and toast overlays, the alarm, the lock
+  screen, onboarding and Preview. Choices are words (the chosen one in the accent), buttons are
+  accent words, fields are an underline, and Pivot has no bold. Nothing a finger lands on moves,
+  and the other styles draw exactly as before (only Pivot previews changed). *Device-unverified.*
+
 - **◁ and ▷ skip seconds in a book or a podcast.** While a chapter or an episode plays, ◁ goes
   10 s back (to the chapter's start at most) and ▷ 30 s ahead, from the screen and from the
   Walkman's keys alike; near the end of a chapter ▷ goes on to the next one. Now Playing draws them

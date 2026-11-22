@@ -297,6 +297,10 @@ pub fn hit(ask: Ask, x: i32, y: i32) -> Hit {
 
 pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, ask: Ask) {
     c.begin_layer(); // a sheet over the screen: what it covers is covered on purpose
+    if crate::pivot::on(t) {
+        render_pivot(c, t, f, ask);
+        return;
+    }
     if ask.is_menu() {
         render_menu(c, t, f, ask);
         return;
@@ -411,6 +415,106 @@ fn render_menu(c: &mut Canvas, t: &Theme, f: &FontSet, ask: Ask) {
             &sty(Family::Sans, Weight::SemiBold, crate::scale::ROW, col, 0.0),
         );
     }
+}
+
+/// Both dialogs the Pivot way: the screen dimmed, then a full-width band of the page's ground where
+/// the card was, with no border and no rules. The question is a large light heading, the answers
+/// are words in the card's own cells — Cancel dim, the action in the accent (a menu's actions in
+/// ink, its Cancel dim, for the reason `render_menu` gives).
+fn render_pivot(c: &mut Canvas, t: &Theme, f: &FontSet, ask: Ask) {
+    use crate::pivot::face;
+    for y in 0..crate::canvas::H as i32 {
+        for x in 0..crate::canvas::W as i32 {
+            c.blend(x, y, t.bg, 200);
+        }
+    }
+    let (cy, ch) = if ask.is_menu() {
+        (ask.card_y(), ask.card_h())
+    } else {
+        (CARD_Y, CARD_H)
+    };
+    fill_rect(c, 0, cy, crate::canvas::W as i32, ch, t.bg);
+    let (title, body, confirm) = ask.text();
+    let x0 = (CARD_X + 4) as f32;
+    let room = (CARD_X + CARD_W) as f32 - x0;
+    let head = face(Weight::Light, 34.0, t.ink);
+    let title = title.to_lowercase();
+    if ask.is_menu() {
+        crate::text::draw(
+            c,
+            f,
+            x0,
+            (cy + 50) as f32,
+            &crate::widgets::fit(f, &title, &head, room),
+            &head,
+        );
+        let top = cy + MENU_HEAD_H;
+        for (i, (label, what)) in ask.rows().iter().enumerate() {
+            let ry = top + MENU_ROW_H * i as i32;
+            let col = if *what == Hit::Cancel { t.dim } else { t.ink };
+            let st = face(Weight::Regular, 26.0, col);
+            let word = crate::i18n::text(label).to_lowercase();
+            crate::text::draw(
+                c,
+                f,
+                x0,
+                (ry + MENU_ROW_H / 2 + 9) as f32,
+                &crate::widgets::fit(f, &word, &st, room),
+                &st,
+            );
+        }
+        return;
+    }
+    crate::text::draw(
+        c,
+        f,
+        x0,
+        (CARD_Y + 52) as f32,
+        &crate::widgets::fit(f, &title, &head, room),
+        &head,
+    );
+    let mut lines = Vec::new();
+    let mut body_style = face(Weight::Regular, 18.0, t.dim);
+    for size in (13..=18).rev() {
+        body_style = face(Weight::Regular, size as f32, t.dim);
+        lines = crate::track_info::wrap(f, body, &body_style, room);
+        let last = CARD_Y + 90 + (lines.len() as i32 - 1) * (size + 8);
+        if last + 6 < BTN_Y || size == 13 {
+            break;
+        }
+    }
+    let pitch = body_style.size as i32 + 8;
+    for (i, line) in lines.iter().enumerate() {
+        crate::text::draw(
+            c,
+            f,
+            x0,
+            (CARD_Y + 90 + i as i32 * pitch) as f32,
+            line,
+            &body_style,
+        );
+    }
+    let by = (BTN_Y + BTN_H / 2 + 9) as f32;
+    let cancel = face(Weight::Regular, 26.0, t.dim);
+    let cancel_word = crate::i18n::text("Cancel").to_lowercase();
+    crate::text::draw(
+        c,
+        f,
+        x0,
+        by,
+        &crate::widgets::fit(f, &cancel_word, &cancel, (BTN_SPLIT - CARD_X - 12) as f32),
+        &cancel,
+    );
+    let go = face(Weight::Regular, 26.0, t.acc);
+    let go_word = confirm.to_lowercase();
+    crate::text::draw(
+        c,
+        f,
+        (BTN_SPLIT + 12) as f32,
+        by,
+        &crate::widgets::fit(f, &go_word, &go, (CARD_X + CARD_W - BTN_SPLIT - 16) as f32),
+        &go,
+    );
 }
 
 fn body_layout(f: &FontSet, t: &Theme, body: &str) -> (crate::text::TextStyle, Vec<String>) {

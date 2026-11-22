@@ -189,7 +189,10 @@ pub fn render(
                         t.scale_color(*col),
                     );
                 }
-                stroke_rect(c, x0, sy, SWATCH_W, CELL_H, t.ctrl(), 1);
+                // Pivot shows the colours bare, with no frame round them.
+                if !crate::pivot::on(t) {
+                    stroke_rect(c, x0, sy, SWATCH_W, CELL_H, t.ctrl(), 1);
+                }
             }
             Part::Row(Item::Skipped(i)) => {
                 let s = &skipped[i];

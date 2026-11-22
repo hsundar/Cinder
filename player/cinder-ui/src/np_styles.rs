@@ -940,7 +940,11 @@ fn terminal_render(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying, l: &
         t.acc,
     );
     // A book or a podcast: the keys skip seconds, not tracks (`np::skip_glyph`).
-    let (prev, next) = if np.spoken { ("[-10]", "[+30]") } else { ("[<<]", "[>>]") };
+    let (prev, next) = if np.spoken {
+        ("[-10]", "[+30]")
+    } else {
+        ("[<<]", "[>>]")
+    };
     word(c, Hit::Prev, prev, side);
     word(c, Hit::Next, next, side);
     word(

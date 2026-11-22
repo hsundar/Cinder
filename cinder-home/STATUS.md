@@ -15,6 +15,13 @@
 >   `App::render`) draws every Sans and Mono in Legible and says capitals labels in lower case,
 >   through `measure` and `draw` alike; `widgets::set_quiet_line` drops the dividers. Same
 >   geometry, so the hit tests are untouched; the overflow test walks every screen in Pivot.
+> - **Pivot hub**: in Pivot, Home reads `PIVOT_HUB` (nav.rs), not `MENU`: music, podcasts,
+>   audiobooks, fm radio, then the rest. `pivot::sections(lib, at)` keeps music (the four tabs and
+>   folders) and the spoken word (podcasts, books) as separate pivots; `activate_menu` opens Books
+>   on the side named (`Screen::Show` is the podcasts word's placeholder). Every screen that drew
+>   its own boxes has a `pivot::on(t)` arm; `text::pivot_restyle` also drops bold and lowercases
+>   heavy capital button words. Cinder/Terminal previews are pixel-identical (golden: only `pivot_*`
+>   changed); 11 more `pivot_*` previews. Checklist 52.12.
 > - **Spoken-word skips**: `cinder_spoken_skip(dir)` (FFI) answers 10 s back / 30 s ahead
 >   (`books::spoken_skip`) while a `LEARNING` file plays and the books component is on, -1
 >   otherwise or when ▷ would pass the chapter's end; `CINDER_ACT_NEXT`/`_PREV` in `main.cpp` ask it

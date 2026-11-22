@@ -4457,6 +4457,17 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
             ("pivot_bluetooth", Screen::Bluetooth),
             ("pivot_device", Screen::Device),
             ("pivot_help", Screen::Help),
+            // The screens that drew their own boxes, buttons and tiles, each with a Pivot arm.
+            ("pivot_fm", Screen::Fm),
+            ("pivot_eq", Screen::Eq),
+            ("pivot_soundscape", Screen::Soundscape),
+            ("pivot_advanced", Screen::Advanced),
+            ("pivot_clock", Screen::ClockSet),
+            ("pivot_keyboard", Screen::Keyboard),
+            ("pivot_pairing", Screen::Pairing),
+            ("pivot_playlist_pick", Screen::PlaylistPick),
+            ("pivot_preview", Screen::Zappin),
+            ("pivot_lock", Screen::Lock),
         ] {
             app.go_for_preview(screen);
             let mut c = Canvas::new();

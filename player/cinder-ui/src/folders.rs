@@ -127,6 +127,39 @@ fn name_style(t: &Theme, dir: bool) -> TextStyle {
     )
 }
 
+/// A row the Pivot way: the kit's row, a folder's name over how many tracks it holds, a track's
+/// title over its artist with its length on the right. No glyphs and no rules.
+fn pivot_row(
+    c: &mut Canvas,
+    t: &Theme,
+    f: &FontSet,
+    lib: &Library,
+    dir: Option<usize>,
+    row: &Row,
+    y: i32,
+) {
+    use crate::kit::{Row as KRow, Trail};
+    match row {
+        Row::Dir(i) => {
+            if let Some(fr) = lib.folders.get(*i) {
+                let n = crate::pivot::quiet(&count_label(fr)).into_owned();
+                crate::kit::row(c, t, f, y, ROW_H(), &KRow::new(&fr.name).sub(&n));
+            }
+        }
+        Row::Track(i) => {
+            if let Some(tr) = dir
+                .and_then(|d| lib.folders.get(d))
+                .and_then(|d| d.tracks.get(*i))
+            {
+                let r = KRow::new(&tr.title)
+                    .sub(&tr.artist)
+                    .trail(Trail::Value(&tr.dur));
+                crate::kit::row(c, t, f, y, ROW_H(), &r);
+            }
+        }
+    }
+}
+
 pub fn render(
     c: &mut Canvas,
     t: &Theme,
@@ -163,6 +196,10 @@ pub fn render(
         let y = row_top(r, scroll);
         if y >= LIST_BOTTOM {
             break;
+        }
+        if crate::pivot::on(t) {
+            pivot_row(c, t, f, lib, dir, row, y);
+            continue;
         }
         let cy = y + ROW_H() / 2;
         match row {

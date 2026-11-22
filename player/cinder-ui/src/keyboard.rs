@@ -234,8 +234,15 @@ pub fn render(
     debug_assert_eq!(y0, crate::chrome::HEADER_BOTTOM);
 
     // ── the field ────────────────────────────────────────────────────────────────
-    fill_rect(c, TEXT_X, TEXT_Y, TEXT_W, TEXT_H, t.panel);
-    stroke_rect(c, TEXT_X, TEXT_Y, TEXT_W, TEXT_H, t.acc, 2);
+    // Pivot: the field is an accent underline, and the keys are their letters with no frames —
+    // each still owns its whole cell, so where a finger lands is unchanged.
+    let pv = crate::pivot::on(t);
+    if pv {
+        fill_rect(c, TEXT_X, TEXT_Y + TEXT_H - 2, TEXT_W, 2, t.acc);
+    } else {
+        fill_rect(c, TEXT_X, TEXT_Y, TEXT_W, TEXT_H, t.panel);
+        stroke_rect(c, TEXT_X, TEXT_Y, TEXT_W, TEXT_H, t.acc, 2);
+    }
     let vs = sty(Family::Sans, Weight::SemiBold, 24.0, t.ink, 0.0);
     let baseline = (TEXT_Y + TEXT_H / 2 + 9) as f32;
     let inner = (TEXT_W - 40) as f32;
@@ -283,6 +290,32 @@ pub fn render(
             };
             let (label, wide) = label_of(key, page, shift);
             let accent = matches!(key, Key::Done) || (matches!(key, Key::Shift) && shift);
+            if pv {
+                // The word keys in lower case; DONE (and CAPS while on) in the accent.
+                let label = if wide { label.to_lowercase() } else { label };
+                let size = if wide { 18.0 } else { 26.0 };
+                center(
+                    c,
+                    f,
+                    (x + w / 2) as f32,
+                    (y + h / 2 + size as i32 / 3) as f32,
+                    &label,
+                    &sty(
+                        Family::Sans,
+                        Weight::Regular,
+                        size,
+                        if accent {
+                            t.acc
+                        } else if wide {
+                            t.dim
+                        } else {
+                            t.ink
+                        },
+                        0.0,
+                    ),
+                );
+                continue;
+            }
             if accent {
                 fill_rect(c, x, y, w, h, t.acc);
             } else if wide {

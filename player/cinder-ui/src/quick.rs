@@ -240,6 +240,10 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, v: &QuickView) {
     );
 
     // The grab bar says the sheet came from the top and goes back there; the hairline is its edge.
+    // Pivot draws neither: its edge is where the dimmed screen begins.
+    if crate::pivot::on(t) {
+        return;
+    }
     fill_rect(c, W as i32 / 2 - 20, BOTTOM() - 12, 40, 4, t.ctrl());
     hline(c, BOTTOM() - 1, t.line);
 }

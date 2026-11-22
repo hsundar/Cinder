@@ -128,7 +128,15 @@ pub fn skip_ring(c: &mut Canvas, cx: f32, cy: f32, s: f32, col: Rgb888, back: bo
     let (dx, dy) = (-end.sin() * dir, end.cos() * dir);
     let (nx, ny) = (-dy, dx);
     let back_of = |k: f32| (ex - 3.6 * dx + k * 3.2 * nx, ey - 3.6 * dy + k * 3.2 * ny);
-    polyline(c, cx, cy, s, col, w, &[back_of(1.0), (ex, ey), back_of(-1.0)]);
+    polyline(
+        c,
+        cx,
+        cy,
+        s,
+        col,
+        w,
+        &[back_of(1.0), (ex, ey), back_of(-1.0)],
+    );
 }
 
 pub fn shuffle(c: &mut Canvas, cx: f32, cy: f32, s: f32, col: Rgb888) {

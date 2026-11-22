@@ -452,7 +452,10 @@ pub(crate) fn value_pill(
     let st = sty(Family::Mono, Weight::Regular, 12.0, col, 0.08);
     let w = text::measure(f, &up, &st) as i32 + 24;
     let h = 28;
-    crate::widgets::stroke_rect(c, xr - w, cy - h / 2, w, h, bord, 1);
+    // Pivot: the value is a word, in the accent when it is doing something; no box.
+    if !crate::pivot::on(t) {
+        crate::widgets::stroke_rect(c, xr - w, cy - h / 2, w, h, bord, 1);
+    }
     text::draw(c, f, (xr - w + 12) as f32, (cy + 4) as f32, &up, &st);
 }
 
@@ -469,7 +472,7 @@ pub(crate) fn row(
     let desc = crate::i18n::text(desc);
     let rh = ROW_H();
     let cy = y + rh / 2;
-    if sel {
+    if sel && !crate::pivot::on(t) {
         fill_rect(c, 0, y, crate::canvas::W as i32, rh, t.row_sel);
     }
     let lc = if sel { t.acc } else { t.ink };
@@ -552,7 +555,10 @@ pub fn strip_lines(
 /// The signal-path strip at `y`.
 fn path_strip(c: &mut Canvas, t: &Theme, f: &FontSet, y: i32, path: &str, warn: Option<&str>) {
     use crate::kit::{LEFT, RIGHT};
-    fill_rect(c, 0, y, crate::canvas::W as i32, PATH_STRIP_H, t.panel);
+    // Pivot: the path is a dim line of words, not a shaded band.
+    if !crate::pivot::on(t) {
+        fill_rect(c, 0, y, crate::canvas::W as i32, PATH_STRIP_H, t.panel);
+    }
     hline(c, y, t.line);
     hline(c, y + PATH_STRIP_H - 1, t.line);
     let st = sty(
@@ -588,7 +594,8 @@ fn balance_row(c: &mut Canvas, t: &Theme, f: &FontSet, s: &Sound, sel: bool, y: 
     // drawn controls and their hit tests share one source.
     let scroll = balance_top(0) - y;
     let centred = s.balance == BALANCE_CENTRE;
-    if sel {
+    let pv = crate::pivot::on(t);
+    if sel && !pv {
         fill_rect(c, 0, y, crate::canvas::W as i32, BALANCE_ROW_H, t.row_sel);
     }
     let lc = if sel { t.acc } else { t.ink };
@@ -655,8 +662,16 @@ fn balance_row(c: &mut Canvas, t: &Theme, f: &FontSet, s: &Sound, sel: bool, y: 
     // 40x22 switch here would be the only one of its kind on the screen.
     {
         let (rx, ry, rw, rh) = balance_mono_rect(scroll);
-        let col = if s.mono { t.acc_ink } else { t.dim };
-        if s.mono {
+        let col = if pv && s.mono {
+            t.acc
+        } else if s.mono {
+            t.acc_ink
+        } else {
+            t.dim
+        };
+        if pv {
+            // A word in its cell: the accent while latched.
+        } else if s.mono {
             fill_rect(c, rx, ry, rw, rh, t.acc);
         } else {
             stroke_rect(c, rx, ry, rw, rh, t.line, 1);
@@ -666,8 +681,16 @@ fn balance_row(c: &mut Canvas, t: &Theme, f: &FontSet, s: &Sound, sel: bool, y: 
             f,
             (rx + rw / 2) as f32,
             (ry + rh / 2 + 5) as f32,
-            crate::i18n::text("MONO"),
-            &sty(Family::Mono, Weight::Bold, 12.0, col, 0.14),
+            &if pv {
+                crate::pivot::quiet(crate::i18n::text("MONO"))
+            } else {
+                crate::i18n::text("MONO").into()
+            },
+            &if pv {
+                crate::pivot::face(Weight::Regular, 18.0, col)
+            } else {
+                sty(Family::Mono, Weight::Bold, 12.0, col, 0.14)
+            },
         );
     }
 
@@ -678,14 +701,24 @@ fn balance_row(c: &mut Canvas, t: &Theme, f: &FontSet, s: &Sound, sel: bool, y: 
         let (rx, ry, rw, rh) = balance_reset_rect(scroll);
         let dead = centred || s.mono;
         let col = if dead { t.faint } else { t.acc };
-        stroke_rect(c, rx, ry, rw, rh, if dead { t.line } else { t.acc }, 1);
+        if !pv {
+            stroke_rect(c, rx, ry, rw, rh, if dead { t.line } else { t.acc }, 1);
+        }
         center(
             c,
             f,
             (rx + rw / 2) as f32,
             (ry + rh / 2 + 5) as f32,
-            crate::i18n::text("CENTRE"),
-            &sty(Family::Mono, Weight::Bold, 12.0, col, 0.14),
+            &if pv {
+                crate::pivot::quiet(crate::i18n::text("CENTRE"))
+            } else {
+                crate::i18n::text("CENTRE").into()
+            },
+            &if pv {
+                crate::pivot::face(Weight::Regular, 18.0, col)
+            } else {
+                sty(Family::Mono, Weight::Bold, 12.0, col, 0.14)
+            },
         );
     }
 
@@ -738,7 +771,12 @@ fn balance_row(c: &mut Canvas, t: &Theme, f: &FontSet, s: &Sound, sel: bool, y: 
     // Knob. Square, to match the toggle's knob — this UI has no circle primitive and a hand-rolled
     // one here would be the only round thing on the screen. It grows under a finger.
     let k = if s.balance_drag && live { 32 } else { 24 };
-    fill_rect(c, kx - k / 2, ty - k / 2, k, k, knob_col);
+    if pv {
+        // Pivot's knobs are round, as on its other sliders (EQ, Tone).
+        crate::widgets::disc(c, kx, ty, k as u32, knob_col);
+    } else {
+        fill_rect(c, kx - k / 2, ty - k / 2, k, k, knob_col);
+    }
 
     // End caps and the live readout share the line under the track. L and R sit at the extremes so
     // they never collide with the knob at full stop; the value sits between them, centred, where it
@@ -1050,18 +1088,31 @@ fn mode_part(c: &mut Canvas, t: &Theme, f: &FontSet, s: &Sound, scroll: i32, y: 
     for (i, label) in MODES.iter().take(n).enumerate() {
         let (sx, sy, sw, sh) = mode_rect(i, scroll, n);
         let on = i == mode;
-        if on {
-            fill_rect(c, sx, sy, sw, sh, t.acc);
+        // Pivot: three words, the mode in the accent, larger; no segments.
+        let pv = crate::pivot::on(t);
+        if !pv {
+            if on {
+                fill_rect(c, sx, sy, sw, sh, t.acc);
+            }
+            stroke_rect(c, sx, sy, sw, sh, if on { t.acc } else { t.line }, 1);
         }
-        stroke_rect(c, sx, sy, sw, sh, if on { t.acc } else { t.line }, 1);
-        let st = sty(
-            Family::Sans,
-            Weight::SemiBold,
-            15.0,
-            if on { t.acc_ink } else { t.dim },
-            0.0,
-        );
-        let fitted = crate::widgets::fit(f, crate::i18n::text(label), &st, (sw - 12) as f32);
+        let st = if pv {
+            crate::pivot::face(Weight::Regular, 20.0, if on { t.acc } else { t.dim })
+        } else {
+            sty(
+                Family::Sans,
+                Weight::SemiBold,
+                15.0,
+                if on { t.acc_ink } else { t.dim },
+                0.0,
+            )
+        };
+        let label = if pv {
+            crate::i18n::text(label).to_lowercase()
+        } else {
+            crate::i18n::text(label).to_string()
+        };
+        let fitted = crate::widgets::fit(f, &label, &st, (sw - 12) as f32);
         center(
             c,
             f,
@@ -1115,17 +1166,25 @@ pub fn render(
         let segs = [("A", setup == 0), ("B", setup == 1)];
         for (i, (label, on)) in segs.iter().enumerate() {
             let (sx, sy, sw, sh) = ab_rect(i);
-            let st = sty(
-                Family::Mono,
-                Weight::Bold,
-                18.0,
-                if *on { t.acc_ink } else { t.dim },
-                0.1,
-            );
-            if *on {
-                fill_rect(c, sx, sy, sw, sh, t.acc);
+            // Pivot: the two letters as words, the live one in the accent.
+            let pv = crate::pivot::on(t);
+            let st = if pv {
+                crate::pivot::face(Weight::Regular, 24.0, if *on { t.acc } else { t.dim })
+            } else {
+                sty(
+                    Family::Mono,
+                    Weight::Bold,
+                    18.0,
+                    if *on { t.acc_ink } else { t.dim },
+                    0.1,
+                )
+            };
+            if !pv {
+                if *on {
+                    fill_rect(c, sx, sy, sw, sh, t.acc);
+                }
+                stroke_rect(c, sx, sy, sw, sh, if *on { t.acc } else { t.line }, 1);
             }
-            stroke_rect(c, sx, sy, sw, sh, if *on { t.acc } else { t.line }, 1);
             center(
                 c,
                 f,

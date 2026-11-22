@@ -474,7 +474,12 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, v: &DeviceView, scroll: i3
         &sty(Family::Sans, Weight::Bold, 64.0, t.ink, -0.02),
     );
     let (bx, bw) = (kit::LEFT, kit::RIGHT - kit::LEFT);
-    stroke_rect(c, bx, hy + 84, bw, 14, t.ctrl(), 1);
+    // Pivot: a faint ground under the level, no frame.
+    if crate::pivot::on(t) {
+        fill_rect(c, bx, hy + 84, bw, 14, t.line);
+    } else {
+        stroke_rect(c, bx, hy + 84, bw, 14, t.ctrl(), 1);
+    }
     let fillw = (bw - 4) * (v.percent.min(100) as i32) / 100;
     if fillw > 0 {
         fill_rect(

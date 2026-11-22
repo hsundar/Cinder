@@ -336,9 +336,21 @@ static BUNDLED: [LazyLock<Font>; 10] = [
     LazyLock::new(|| parse(include_bytes!("../assets/fonts/JetBrainsMono-Light.ttf"))),
     LazyLock::new(|| parse(include_bytes!("../assets/fonts/JetBrainsMono-Regular.ttf"))),
     LazyLock::new(|| parse(include_bytes!("../assets/fonts/JetBrainsMono-Bold.ttf"))),
-    LazyLock::new(|| parse(include_bytes!("../assets/fonts/AtkinsonHyperlegibleNext-Light.ttf"))),
-    LazyLock::new(|| parse(include_bytes!("../assets/fonts/AtkinsonHyperlegibleNext-Regular.ttf"))),
-    LazyLock::new(|| parse(include_bytes!("../assets/fonts/AtkinsonHyperlegibleNext-SemiBold.ttf"))),
+    LazyLock::new(|| {
+        parse(include_bytes!(
+            "../assets/fonts/AtkinsonHyperlegibleNext-Light.ttf"
+        ))
+    }),
+    LazyLock::new(|| {
+        parse(include_bytes!(
+            "../assets/fonts/AtkinsonHyperlegibleNext-Regular.ttf"
+        ))
+    }),
+    LazyLock::new(|| {
+        parse(include_bytes!(
+            "../assets/fonts/AtkinsonHyperlegibleNext-SemiBold.ttf"
+        ))
+    }),
 ];
 
 pub struct FontSet {
@@ -834,11 +846,24 @@ fn pivot_restyle<'a>(s: &'a str, st: &TextStyle) -> Option<(std::borrow::Cow<'a,
         return None;
     }
     let mono = st.fam == Family::Mono;
+    let heavy = matches!(
+        st.weight,
+        Weight::SemiBold | Weight::Bold | Weight::ExtraBold
+    );
+    // Pivot has no bold: emphasis is size and the accent. A heavy Mono label keeps a little weight
+    // (it is small); heavy Sans — the older screens' row titles and button words — goes Regular.
     let weight = match st.weight {
         Weight::Bold | Weight::ExtraBold if mono => Weight::SemiBold,
+        _ if heavy => Weight::Regular,
         w => w,
     };
-    let s = if mono && caps_label(s) {
+    // Capitals are a label's way of shouting. Mono labels say it in lower case; so do heavy Sans
+    // button words ("SET CLOCK", "TURN OFF"), but not a short one, which is likelier a codec or a
+    // product ("LDAC", "SBC") than a word.
+    let shout = caps_label(s)
+        && (mono
+            || (heavy && (s.contains(' ') || s.chars().filter(|c| c.is_alphabetic()).count() > 4)));
+    let s = if shout {
         s.to_lowercase().into()
     } else {
         s.into()
@@ -849,7 +874,11 @@ fn pivot_restyle<'a>(s: &'a str, st: &TextStyle) -> Option<(std::borrow::Cow<'a,
         // Mono labels are small capitals; in lower case the same size reads a size smaller.
         size: if mono { st.size + 1.0 } else { st.size },
         color: st.color,
-        tracking: if mono { st.tracking.min(0.02) } else { st.tracking },
+        tracking: if mono {
+            st.tracking.min(0.02)
+        } else {
+            st.tracking
+        },
     };
     Some((s, st))
 }

@@ -263,13 +263,19 @@ fn count_label(n: usize) -> String {
 fn band(c: &mut Canvas, t: &Theme, f: &FontSet, tracks: usize) {
     let (px, py, pw, ph) = play_band();
     let (sx, _, sw, _) = shuffle_band();
-    fill_rect(c, px, py, pw + sw, ph, t.acc);
-    fill_rect(c, sx, py + 10, 1, ph - 20, t.acc_ink);
+    // Pivot: the two verbs are accent words with their glyphs, on the background.
+    let ink = if crate::pivot::on(t) {
+        t.acc
+    } else {
+        fill_rect(c, px, py, pw + sw, ph, t.acc);
+        fill_rect(c, sx, py + 10, 1, ph - 20, t.acc_ink);
+        t.acc_ink
+    };
 
     let cy = py + ph / 2;
-    let lst = sty(Family::Sans, Weight::Bold, 18.0, t.acc_ink, 0.0);
-    let sst = sty(Family::Mono, Weight::Regular, 11.0, t.acc_ink, 0.06);
-    icons::play(c, (px + 30) as f32, cy as f32, 17.0, t.acc_ink);
+    let lst = sty(Family::Sans, Weight::Bold, 18.0, ink, 0.0);
+    let sst = sty(Family::Mono, Weight::Regular, 11.0, ink, 0.06);
+    icons::play(c, (px + 30) as f32, cy as f32, 17.0, ink);
     text::draw(
         c,
         f,
@@ -281,7 +287,7 @@ fn band(c: &mut Canvas, t: &Theme, f: &FontSet, tracks: usize) {
     let cl = count_label(tracks);
     text::draw(c, f, (px + 52) as f32, (cy + 15) as f32, &cl, &sst);
 
-    icons::shuffle(c, (sx + 28) as f32, cy as f32, 18.0, t.acc_ink);
+    icons::shuffle(c, (sx + 28) as f32, cy as f32, 18.0, ink);
     text::draw(
         c,
         f,
@@ -483,23 +489,35 @@ fn grid(c: &mut Canvas, t: &Theme, f: &FontSet, lib: &Library, scroll: i32, foot
         if y + h < GRID_TOP || y >= GRID_BOTTOM() {
             continue;
         }
-        fill_rect(c, x, y, w, h, t.panel);
-        crate::widgets::stroke_rect(
-            c,
-            x,
-            y,
-            w,
-            h,
-            if now == Some(i) { t.acc } else { t.line },
-            1,
-        );
-        let ns = sty(
-            Family::Sans,
-            Weight::SemiBold,
-            crate::scale::ROW,
-            t.ink,
-            0.0,
-        );
+        // Pivot: no tile, the channel's name large, in the accent when it is the one to play.
+        let pv = crate::pivot::on(t);
+        if !pv {
+            fill_rect(c, x, y, w, h, t.panel);
+            crate::widgets::stroke_rect(
+                c,
+                x,
+                y,
+                w,
+                h,
+                if now == Some(i) { t.acc } else { t.line },
+                1,
+            );
+        }
+        let ns = if pv {
+            crate::pivot::face(
+                Weight::Regular,
+                crate::scale::ROW + 4.0,
+                if now == Some(i) { t.acc } else { t.ink },
+            )
+        } else {
+            sty(
+                Family::Sans,
+                Weight::SemiBold,
+                crate::scale::ROW,
+                t.ink,
+                0.0,
+            )
+        };
         let cs = sty(
             Family::Mono,
             Weight::Regular,

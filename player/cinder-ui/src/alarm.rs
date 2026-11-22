@@ -47,6 +47,10 @@ pub fn parse_hhmm(s: &str) -> Option<u16> {
 }
 
 pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, min: u16, on: bool, sel: usize) {
+    if crate::pivot::on(t) {
+        render_pivot(c, t, f, min, on, sel);
+        return;
+    }
     c.fill(t.bg);
     let y0 = crate::chrome::header(c, t, f, crate::i18n::text("Alarm"), None);
     center(
@@ -139,6 +143,93 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, min: u16, on: bool, sel: u
             if on { t.ink } else { t.bg },
             0.0,
         ),
+    );
+}
+
+/// The alarm the Pivot way: the same rows and buttons, drawn as words. The chosen row is its label
+/// in the accent (no wash), the value large and light, ± are accent glyphs in their cells with no
+/// box round them, and the button is its words in the accent (dim when it turns the alarm off).
+fn render_pivot(c: &mut Canvas, t: &Theme, f: &FontSet, min: u16, on: bool, sel: usize) {
+    use crate::pivot::face;
+    c.fill(t.bg);
+    let y0 = crate::chrome::header(c, t, f, crate::i18n::text("Alarm"), None);
+    let state = if on {
+        crate::ui_format!("ON · PLAYS AT {time}", time = hhmm(min))
+    } else {
+        crate::i18n::text("OFF").to_string()
+    };
+    let st = face(Weight::Regular, 20.0, if on { t.acc } else { t.dim });
+    text::draw(
+        c,
+        f,
+        crate::pivot::LEFT,
+        (y0 + 34) as f32,
+        &crate::widgets::fit(f, &crate::pivot::quiet(&state), &st, 436.0),
+        &st,
+    );
+    let hint = face(Weight::Regular, 15.0, t.dim);
+    text::draw(
+        c,
+        f,
+        crate::pivot::LEFT,
+        (y0 + 56) as f32,
+        crate::i18n::text("By the clock in the top bar"),
+        &hint,
+    );
+    let ft = fields_top();
+    for (i, (label, value)) in [
+        (crate::i18n::text("Hour"), format!("{:02}", min / 60)),
+        (crate::i18n::text("Minute"), format!("{:02}", min % 60)),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let ry = ft + i as i32 * ROW_H;
+        let cy = ry + ROW_H / 2;
+        let lc = if i == sel { t.acc } else { t.ink };
+        text::draw(
+            c,
+            f,
+            crate::pivot::LEFT,
+            (cy + 8) as f32,
+            &label.to_lowercase(),
+            &face(Weight::Regular, 24.0, lc),
+        );
+        right(
+            c,
+            f,
+            (crate::clockset::MINUS_X - 16) as f32,
+            (cy + 12) as f32,
+            &value,
+            &face(Weight::Light, 36.0, t.ink),
+        );
+        for (which, glyph) in [(0usize, "−"), (1, "+")] {
+            let (bx, by, bw, bh) = btn_rect(i, which);
+            center(
+                c,
+                f,
+                (bx + bw / 2) as f32,
+                (by + bh / 2 + 11) as f32,
+                glyph,
+                &face(Weight::Light, 34.0, t.acc),
+            );
+        }
+    }
+    let (sx, sy, sw, sh) = set_rect();
+    let word = crate::i18n::text(if on {
+        "Turn the alarm off"
+    } else {
+        "Turn the alarm on"
+    })
+    .to_lowercase();
+    let bst = face(Weight::Regular, 24.0, if on { t.dim } else { t.acc });
+    text::draw(
+        c,
+        f,
+        sx as f32,
+        (sy + sh / 2 + 9) as f32,
+        &crate::widgets::fit(f, &word, &bst, sw as f32),
+        &bst,
     );
 }
 

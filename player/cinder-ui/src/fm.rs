@@ -195,52 +195,80 @@ pub struct Fm {
 pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, s: &Fm) {
     c.fill(t.bg);
     crate::chrome::header(c, t, f, crate::i18n::text("FM Radio"), None);
+    // Pivot: no boxes. Every pill, button and preset is its word in its own cell, the one that is
+    // on in the accent; the cells (and so the taps) are the Cinder ones.
+    let pv = crate::pivot::on(t);
+    // A lit cell's word: on the accent fill in Cinder, in the accent itself in Pivot.
+    let lit_ink = if pv { t.acc } else { t.acc_ink };
 
     // power pill
     let (px, py, pw, ph) = POWER;
-    if s.playing {
-        fill_rect(c, px, py, pw, ph, t.acc);
+    if !pv {
+        if s.playing {
+            fill_rect(c, px, py, pw, ph, t.acc);
+        }
+        stroke_rect(c, px, py, pw, ph, if s.playing { t.acc } else { t.line }, 1);
     }
-    stroke_rect(c, px, py, pw, ph, if s.playing { t.acc } else { t.line }, 1);
     center(
         c,
         f,
         (px + pw / 2) as f32,
         (py + ph / 2 + 4) as f32,
-        if s.playing {
-            crate::i18n::text("ON")
-        } else {
-            crate::i18n::text("OFF")
+        &{
+            let w = if s.playing {
+                crate::i18n::text("ON")
+            } else {
+                crate::i18n::text("OFF")
+            };
+            if pv {
+                crate::pivot::quiet(w)
+            } else {
+                w.into()
+            }
         },
-        &sty(
-            Family::Mono,
-            Weight::Regular,
-            12.0,
-            if s.playing { t.acc_ink } else { t.dim },
-            0.14,
-        ),
+        &if pv {
+            crate::pivot::face(Weight::Regular, 18.0, if s.playing { t.acc } else { t.dim })
+        } else {
+            sty(
+                Family::Mono,
+                Weight::Regular,
+                12.0,
+                if s.playing { lit_ink } else { t.dim },
+                0.14,
+            )
+        },
     );
 
     // Bluetooth output pill. The radio's audio is analogue into the codec ADC, captured from
     // hw:0,1 and re-encoded — so the cable can stay in as the aerial while you listen on LDAC.
     let (bx, by, bw, bh) = BTOUT;
-    if s.bt_out {
-        fill_rect(c, bx, by, bw, bh, t.acc);
+    if !pv {
+        if s.bt_out {
+            fill_rect(c, bx, by, bw, bh, t.acc);
+        }
+        stroke_rect(c, bx, by, bw, bh, if s.bt_out { t.acc } else { t.line }, 1);
     }
-    stroke_rect(c, bx, by, bw, bh, if s.bt_out { t.acc } else { t.line }, 1);
     center(
         c,
         f,
         (bx + bw / 2) as f32,
         (by + bh / 2 + 4) as f32,
-        crate::i18n::text("BT OUT"),
-        &sty(
-            Family::Mono,
-            Weight::Regular,
-            12.0,
-            if s.bt_out { t.acc_ink } else { t.dim },
-            0.14,
-        ),
+        &if pv {
+            crate::pivot::quiet(crate::i18n::text("BT OUT"))
+        } else {
+            crate::i18n::text("BT OUT").into()
+        },
+        &if pv {
+            crate::pivot::face(Weight::Regular, 18.0, if s.bt_out { t.acc } else { t.dim })
+        } else {
+            sty(
+                Family::Mono,
+                Weight::Regular,
+                12.0,
+                if s.bt_out { lit_ink } else { t.dim },
+                0.14,
+            )
+        },
     );
 
     // big frequency readout
@@ -317,11 +345,17 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, s: &Fm) {
     );
 
     // transport row
-    let bs = sty(Family::Mono, Weight::Regular, 13.0, t.dim, 0.08);
+    let bs = if pv {
+        crate::pivot::face(Weight::Regular, 20.0, t.ink)
+    } else {
+        sty(Family::Mono, Weight::Regular, 13.0, t.dim, 0.08)
+    };
     for (i, l) in BTN_LABELS.iter().enumerate() {
         let bx = btn_x(i);
         let button_h = BTN_H();
-        stroke_rect(c, bx, BTN_Y, BTN_W, button_h, t.line, 1);
+        if !pv {
+            stroke_rect(c, bx, BTN_Y, BTN_W, button_h, t.line, 1);
+        }
         center(
             c,
             f,
@@ -351,20 +385,22 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, s: &Fm) {
         let cy = PRESET_Y0 + (i / 3) as i32 * (PRESET_H + 10);
         let has = i < s.n_stations;
         let active = has && s.stations[i] == s.khz;
-        if active {
-            fill_rect(c, cx, cy, PRESET_W, PRESET_H, t.acc);
+        if !pv {
+            if active {
+                fill_rect(c, cx, cy, PRESET_W, PRESET_H, t.acc);
+            }
+            stroke_rect(
+                c,
+                cx,
+                cy,
+                PRESET_W,
+                PRESET_H,
+                if active { t.acc } else { t.line },
+                1,
+            );
         }
-        stroke_rect(
-            c,
-            cx,
-            cy,
-            PRESET_W,
-            PRESET_H,
-            if active { t.acc } else { t.line },
-            1,
-        );
         let col = if active {
-            t.acc_ink
+            lit_ink
         } else if has {
             t.dim
         } else {
@@ -381,7 +417,15 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, s: &Fm) {
             (cx + PRESET_W / 2) as f32,
             (cy + 24) as f32,
             &label,
-            &sty(Family::Mono, Weight::Regular, 17.0, col, 0.0),
+            &if pv {
+                crate::pivot::face(
+                    Weight::Regular,
+                    20.0,
+                    if has && !active { t.ink } else { col },
+                )
+            } else {
+                sty(Family::Mono, Weight::Regular, 17.0, col, 0.0)
+            },
         );
         center(
             c,
@@ -389,7 +433,11 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, s: &Fm) {
             (cx + PRESET_W / 2) as f32,
             (cy + 40) as f32,
             &format!("P{}", i + 1),
-            &sty(Family::Mono, Weight::Regular, 11.0, col, 0.14),
+            &if pv {
+                crate::pivot::face(Weight::Regular, 14.0, t.faint)
+            } else {
+                sty(Family::Mono, Weight::Regular, 11.0, col, 0.14)
+            },
         );
     }
 
@@ -399,17 +447,28 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, s: &Fm) {
     } else {
         crate::i18n::text("SCAN THE BAND").to_string()
     };
+    let scan_label = if pv {
+        scan_label.to_lowercase()
+    } else {
+        scan_label
+    };
     let scan_w = if s.rec_available { SCAN_HALF_W } else { 436 };
-    stroke_rect(
-        c,
-        22,
-        SCAN_Y,
-        scan_w,
-        SCAN_H,
-        if s.scanning { t.acc } else { t.line },
-        1,
-    );
-    if s.scanning {
+    if !pv {
+        stroke_rect(
+            c,
+            22,
+            SCAN_Y,
+            scan_w,
+            SCAN_H,
+            if s.scanning { t.acc } else { t.line },
+            1,
+        );
+    }
+    if s.scanning && pv {
+        // Pivot's progress is a thin accent rule under the word, not a filled box.
+        let w = scan_w * s.scan_pct.min(100) as i32 / 100;
+        fill_rect(c, 22, SCAN_Y + SCAN_H - 2, w, 2, t.acc);
+    } else if s.scanning {
         // fill proportional to progress — the only honest progress bar is one driven by real work
         let w = scan_w * s.scan_pct.min(100) as i32 / 100;
         fill_rect(c, 22, SCAN_Y, w, SCAN_H, t.row_sel);
@@ -420,47 +479,59 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, s: &Fm) {
         (22 + scan_w / 2) as f32,
         (SCAN_Y + SCAN_H / 2 + 5) as f32,
         &scan_label,
-        &sty(
-            Family::Mono,
-            Weight::Regular,
-            14.0,
-            if s.scanning { t.acc } else { t.dim },
-            0.10,
-        ),
+        &if pv {
+            // The screen's one action: an accent word.
+            crate::pivot::face(Weight::Regular, 20.0, t.acc)
+        } else {
+            sty(
+                Family::Mono,
+                Weight::Regular,
+                14.0,
+                if s.scanning { t.acc } else { t.dim },
+                0.10,
+            )
+        },
     );
     if s.rec_available {
         let on = s.rec_secs >= 0;
-        if on {
-            fill_rect(c, REC_X, SCAN_Y, SCAN_HALF_W, SCAN_H, t.acc);
+        if !pv {
+            if on {
+                fill_rect(c, REC_X, SCAN_Y, SCAN_HALF_W, SCAN_H, t.acc);
+            }
+            stroke_rect(
+                c,
+                REC_X,
+                SCAN_Y,
+                SCAN_HALF_W,
+                SCAN_H,
+                if on { t.acc } else { t.line },
+                1,
+            );
         }
-        stroke_rect(
-            c,
-            REC_X,
-            SCAN_Y,
-            SCAN_HALF_W,
-            SCAN_H,
-            if on { t.acc } else { t.line },
-            1,
-        );
         let label = if on {
             let secs = s.rec_secs;
             crate::ui_format!("\u{25CF} REC {}:{:02}", secs / 60, secs % 60)
         } else {
             crate::i18n::text("RECORD").to_string()
         };
+        let label = if pv { label.to_lowercase() } else { label };
         center(
             c,
             f,
             (REC_X + SCAN_HALF_W / 2) as f32,
             (SCAN_Y + SCAN_H / 2 + 5) as f32,
             &label,
-            &sty(
-                Family::Mono,
-                Weight::Regular,
-                14.0,
-                if on { t.acc_ink } else { t.dim },
-                0.10,
-            ),
+            &if pv {
+                crate::pivot::face(Weight::Regular, 20.0, if on { t.acc } else { t.ink })
+            } else {
+                sty(
+                    Family::Mono,
+                    Weight::Regular,
+                    14.0,
+                    if on { t.acc_ink } else { t.dim },
+                    0.10,
+                )
+            },
         );
     }
     // What the scan actually costs depends on which route is live, and the difference is two

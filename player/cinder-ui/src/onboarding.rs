@@ -90,15 +90,19 @@ pub fn render_with(c: &mut Canvas, t: &Theme, f: &FontSet, page: usize, choices:
 }
 
 fn make_it_yours(c: &mut Canvas, t: &Theme, f: &FontSet, ch: &Choices) {
-    crate::widgets::draw_fit(
-        c,
-        f,
-        36.0,
-        92.0,
-        crate::i18n::text("Make it yours"),
-        &sty(Family::Sans, Weight::Bold, 32.0, t.ink, 0.0),
-        458.0,
-    );
+    if crate::pivot::on(t) {
+        title(c, t, f, crate::i18n::text("Make it yours"));
+    } else {
+        crate::widgets::draw_fit(
+            c,
+            f,
+            36.0,
+            92.0,
+            crate::i18n::text("Make it yours"),
+            &sty(Family::Sans, Weight::Bold, 32.0, t.ink, 0.0),
+            458.0,
+        );
+    }
     crate::widgets::draw_fit(
         c,
         f,
@@ -146,15 +150,20 @@ fn make_it_yours(c: &mut Canvas, t: &Theme, f: &FontSet, ch: &Choices) {
 
 fn welcome(c: &mut Canvas, t: &Theme, f: &FontSet) {
     // accent wordmark + tagline
-    crate::widgets::draw_fit(
-        c,
-        f,
-        36.0,
-        300.0,
-        "CINDER",
-        &sty(Family::Sans, Weight::Bold, 52.0, t.acc, 0.02),
-        458.0,
-    );
+    if crate::pivot::on(t) {
+        let st = crate::pivot::face(Weight::Light, 64.0, t.acc);
+        crate::widgets::draw_fit(c, f, 32.0, 300.0, "cinder", &st, 458.0);
+    } else {
+        crate::widgets::draw_fit(
+            c,
+            f,
+            36.0,
+            300.0,
+            "CINDER",
+            &sty(Family::Sans, Weight::Bold, 52.0, t.acc, 0.02),
+            458.0,
+        );
+    }
     crate::widgets::draw_fit(
         c,
         f,
@@ -203,6 +212,12 @@ fn ctl(c: &mut Canvas, t: &Theme, f: &FontSet, y: i32, key: &str, action: &str) 
 }
 
 fn title(c: &mut Canvas, t: &Theme, f: &FontSet, s: &str) {
+    if crate::pivot::on(t) {
+        // Pivot: a large light heading in lower case.
+        let st = crate::pivot::face(Weight::Light, 40.0, t.ink);
+        crate::widgets::draw_fit(c, f, 34.0, 90.0, &s.to_lowercase(), &st, 458.0);
+        return;
+    }
     crate::widgets::draw_fit(
         c,
         f,

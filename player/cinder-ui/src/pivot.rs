@@ -1,6 +1,7 @@
-//! The Pivot style's own screens: Home, a menu of large words; the Library, whose sections
-//! (songs · albums · artists · playlists · books · podcasts) sit side by side in a strip under a
-//! huge heading and are reached by a sideways swipe or a tap on their name; and the pages a row
+//! The Pivot style's own screens: Home, the hub, a menu of large words; two hubs under it, music
+//! (songs · albums · artists · playlists) and the spoken word (podcasts · books), whose sections
+//! sit side by side in a strip under a huge heading and are reached by a sideways swipe or a tap
+//! on their name; and the pages a row
 //! opens (an album, an artist, a playlist, a podcast show). Everything is set in Atkinson
 //! Hyperlegible Next (`Family::Legible`), large, with one item per row and almost no chrome.
 //!
@@ -84,21 +85,20 @@ impl Section {
     }
 }
 
-/// The sections, in strip order: the four list tabs, then books when the library has audiobooks
-/// and folders when Settings ▸ Folders tab is on.
-pub fn sections(lib: &Library) -> Vec<Section> {
+/// The sections that pivot beside `at`, in strip order. Music is the four list tabs, then folders
+/// when Settings ▸ Folders tab is on. The spoken word is a hub of its own, opened from Home as
+/// podcasts or audiobooks: those two, always both, so either Home word lands on its own list
+/// (empty, with where to put the files) even when the drive has none.
+pub fn sections(lib: &Library, at: Section) -> Vec<Section> {
+    if matches!(at, Section::Books | Section::Podcasts) {
+        return vec![Section::Podcasts, Section::Books];
+    }
     let mut v = vec![
         Section::Tab(Tab::Songs),
         Section::Tab(Tab::Albums),
         Section::Tab(Tab::Artists),
         Section::Tab(Tab::Playlists),
     ];
-    if lib.books.iter().any(|b| !b.is_podcast()) {
-        v.push(Section::Books);
-    }
-    if lib.books.iter().any(|b| b.is_podcast()) {
-        v.push(Section::Podcasts);
-    }
     if lib.folders_tab {
         v.push(Section::Folders);
     }
@@ -108,7 +108,7 @@ pub fn sections(lib: &Library) -> Vec<Section> {
 /// The section a sideways swipe lands on: `dir < 0` (leftward, the next) or `dir > 0`. The strip
 /// wraps, as a carousel of names does.
 pub fn neighbour(lib: &Library, at: Section, dir: i32) -> Section {
-    let s = sections(lib);
+    let s = sections(lib, at);
     let i = s.iter().position(|x| *x == at).unwrap_or(0);
     let n = s.len();
     s[if dir < 0 {
@@ -145,7 +145,7 @@ pub fn list_bottom() -> i32 {
 /// Where each name in the strip is drawn: `(section, x0, x1)`, the current one first at the left
 /// and the rest after it in order, wrapping round; those starting past the edge are left out.
 pub fn strip_layout(f: &FontSet, lib: &Library, current: Section) -> Vec<(Section, i32, i32)> {
-    let s = sections(lib);
+    let s = sections(lib, current);
     let start = s.iter().position(|x| *x == current).unwrap_or(0);
     let style = st(Weight::Regular, STRIP_SIZE, Rgb888::new(0, 0, 0));
     let gap = text::scaled(26.0);
@@ -183,7 +183,9 @@ pub fn row_h(sec: Section) -> i32 {
 
 /// The books (or, `podcasts`, the shows) on the shelf, as indices into `Library::books`.
 pub fn shelf(lib: &Library, podcasts: bool) -> Vec<usize> {
-    (0..lib.books.len()).filter(|&i| lib.books[i].is_podcast() == podcasts).collect()
+    (0..lib.books.len())
+        .filter(|&i| lib.books[i].is_podcast() == podcasts)
+        .collect()
 }
 
 /// How many rows a section has.
@@ -281,7 +283,11 @@ fn row_text(
             .map(|b| {
                 let n = b.chapters.len();
                 let new = unheard(b);
-                let mut sub = if new > 0 { crate::ui_format!("{} new of {}", new, n) } else { crate::ui_format!("{} episodes", n) };
+                let mut sub = if new > 0 {
+                    crate::ui_format!("{} new of {}", new, n)
+                } else {
+                    crate::ui_format!("{} episodes", n)
+                };
                 if let Some(d) = b.chapter_date(n.saturating_sub(1)) {
                     sub = format!("{sub} · {d}");
                 }
@@ -330,7 +336,9 @@ pub fn unheard(b: &crate::model::BookRow) -> usize {
     if b.finished {
         return 0;
     }
-    b.chapters.len().saturating_sub(b.chapter + usize::from(b.pos_ms > 0))
+    b.chapters
+        .len()
+        .saturating_sub(b.chapter + usize::from(b.pos_ms > 0))
 }
 
 /// The heading of a Pivot screen: the back chevron, then `word` huge and light, running off the
@@ -371,7 +379,7 @@ pub fn library(
         t,
         f,
         match sec {
-            Section::Books | Section::Podcasts => sec.label(),
+            Section::Books | Section::Podcasts => crate::i18n::text("spoken word"),
             _ => crate::i18n::text("music"),
         },
     );
@@ -1086,7 +1094,10 @@ pub fn show_actions() -> Vec<&'static str> {
     vec![crate::i18n::text("newest"), crate::i18n::text("continue")]
 }
 pub fn show_list_top() -> i32 {
-    page_list_top(strip_actions_top() - (strip_bottom() - strip_top()), show_actions().len())
+    page_list_top(
+        strip_actions_top() - (strip_bottom() - strip_top()),
+        show_actions().len(),
+    )
 }
 pub fn show_max_scroll(b: &crate::model::BookRow) -> i32 {
     rows_max_scroll(show_list_top(), row_h(Section::Podcasts), b.chapters.len())
@@ -1111,33 +1122,74 @@ pub fn show(
     c.fill(t.bg);
     heading(c, t, f, &b.title);
     let labels = show_actions();
-    let zones = actions_layout(f, &labels, strip_actions_top() - (strip_bottom() - strip_top()));
+    let zones = actions_layout(
+        f,
+        &labels,
+        strip_actions_top() - (strip_bottom() - strip_top()),
+    );
     draw_actions(c, t, f, &zones, &labels);
     let n = b.chapters.len();
     let rh = row_h(Section::Podcasts);
-    page_rows(c, t, show_list_top(), rh, n, scroll, sbar_active, |c, y, r| {
-        let i = n - 1 - r;
-        let ep = &b.chapters[i];
-        let state = if b.finished || i < b.chapter {
-            crate::i18n::text("heard").to_string()
-        } else if i == b.chapter && b.pos_ms > 0 {
-            crate::ui_format!("{} min in", b.pos_ms / 60_000)
-        } else {
-            crate::i18n::text("new").to_string()
-        };
-        let sub = match b.chapter_date(i) {
-            Some(d) => format!("{d} · {state}"),
-            None => state,
-        };
-        let now = playing_id == Some(ep.object_id);
-        let heard = b.finished || i < b.chapter;
-        let max_w = W as f32 - LEFT - 22.0;
-        let col = if now { t.acc } else if heard { t.dim } else { t.ink };
-        let s1 = st(if now { Weight::SemiBold } else { Weight::Regular }, 25.0, col);
-        text::draw(c, f, LEFT, (y + px(34.0)) as f32, &crate::widgets::fit(f, &ep.title, &s1, max_w), &s1);
-        let s2 = st(Weight::Regular, 17.0, if heard { t.faint } else { t.dim });
-        text::draw(c, f, LEFT, (y + px(60.0)) as f32, &crate::widgets::fit(f, &sub, &s2, max_w), &s2);
-    });
+    page_rows(
+        c,
+        t,
+        show_list_top(),
+        rh,
+        n,
+        scroll,
+        sbar_active,
+        |c, y, r| {
+            let i = n - 1 - r;
+            let ep = &b.chapters[i];
+            let state = if b.finished || i < b.chapter {
+                crate::i18n::text("heard").to_string()
+            } else if i == b.chapter && b.pos_ms > 0 {
+                crate::ui_format!("{} min in", b.pos_ms / 60_000)
+            } else {
+                crate::i18n::text("new").to_string()
+            };
+            let sub = match b.chapter_date(i) {
+                Some(d) => format!("{d} · {state}"),
+                None => state,
+            };
+            let now = playing_id == Some(ep.object_id);
+            let heard = b.finished || i < b.chapter;
+            let max_w = W as f32 - LEFT - 22.0;
+            let col = if now {
+                t.acc
+            } else if heard {
+                t.dim
+            } else {
+                t.ink
+            };
+            let s1 = st(
+                if now {
+                    Weight::SemiBold
+                } else {
+                    Weight::Regular
+                },
+                25.0,
+                col,
+            );
+            text::draw(
+                c,
+                f,
+                LEFT,
+                (y + px(34.0)) as f32,
+                &crate::widgets::fit(f, &ep.title, &s1, max_w),
+                &s1,
+            );
+            let s2 = st(Weight::Regular, 17.0, if heard { t.faint } else { t.dim });
+            text::draw(
+                c,
+                f,
+                LEFT,
+                (y + px(60.0)) as f32,
+                &crate::widgets::fit(f, &sub, &s2, max_w),
+                &s2,
+            );
+        },
+    );
     zones
 }
 
@@ -1264,7 +1316,11 @@ mod tests {
     #[test]
     fn a_swipe_steps_through_the_sections_and_wraps() {
         let lib = Library::sample();
-        let s = sections(&lib);
+        let s = sections(&lib, Section::Tab(Tab::Songs));
+        assert!(
+            !s.contains(&Section::Books) && !s.contains(&Section::Podcasts),
+            "music only"
+        );
         let last = *s.last().unwrap();
         assert_eq!(
             neighbour(&lib, Section::Tab(Tab::Songs), -1),
@@ -1272,6 +1328,12 @@ mod tests {
         );
         assert_eq!(neighbour(&lib, Section::Tab(Tab::Songs), 1), last);
         assert_eq!(neighbour(&lib, last, -1), Section::Tab(Tab::Songs));
+        assert_eq!(neighbour(&lib, Section::Podcasts, -1), Section::Books);
+        assert_eq!(
+            neighbour(&lib, Section::Books, -1),
+            Section::Podcasts,
+            "the spoken pair wraps"
+        );
     }
 
     #[test]
@@ -1285,16 +1347,44 @@ mod tests {
         };
         let l = "/contents/LEARNING";
         assert!(book(&format!("{l}/Podcasts/Show"), "Podcasts", &["a.mp3"]).is_podcast());
-        assert!(book(&format!("{l}/Show"), "", &["2026-11-03 One.mp3", "2026-11-10 Two.mp3"]).is_podcast());
-        assert!(!book(&format!("{l}/Le Guin/Earthsea"), "Le Guin", &["01.mp3", "02.mp3"]).is_podcast());
+        assert!(book(
+            &format!("{l}/Show"),
+            "",
+            &["2026-11-03 One.mp3", "2026-11-10 Two.mp3"]
+        )
+        .is_podcast());
+        assert!(!book(
+            &format!("{l}/Le Guin/Earthsea"),
+            "Le Guin",
+            &["01.mp3", "02.mp3"]
+        )
+        .is_podcast());
         assert!(
             !book(&format!("{l}/Mixed"), "", &["2026-11-03 One.mp3", "02.mp3"]).is_podcast(),
             "one undated file and it is a book"
         );
-        let b = BookRow { chapters: vec![Default::default(); 4], chapter: 2, pos_ms: 1, ..Default::default() };
+        let b = BookRow {
+            chapters: vec![Default::default(); 4],
+            chapter: 2,
+            pos_ms: 1,
+            ..Default::default()
+        };
         assert_eq!(unheard(&b), 1, "after the one in progress");
-        assert_eq!(unheard(&BookRow { pos_ms: 0, ..b.clone() }), 2, "it, and the one after");
-        assert_eq!(unheard(&BookRow { finished: true, ..b }), 0);
+        assert_eq!(
+            unheard(&BookRow {
+                pos_ms: 0,
+                ..b.clone()
+            }),
+            2,
+            "it, and the one after"
+        );
+        assert_eq!(
+            unheard(&BookRow {
+                finished: true,
+                ..b
+            }),
+            0
+        );
     }
 
     #[test]

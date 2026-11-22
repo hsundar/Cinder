@@ -84,6 +84,8 @@ pub fn render_targets(
     c.fill(t.bg);
     crate::chrome::header(c, t, f, title, Some(&fit_caption(f, track, t)));
     let rows = targets.len() + 1;
+    // Pivot: NEW PLAYLIST is an accent line of words, not a filled banner, and no chevrons.
+    let pv = crate::pivot::on(t);
     c.set_clip_y(TOP, BOTTOM);
     let first = (scroll_px.max(0) / ROW_H) as usize;
     let mut y = TOP - (scroll_px.max(0) % ROW_H);
@@ -93,14 +95,27 @@ pub fn render_targets(
         }
         let cy = y + ROW_H / 2;
         if index == 0 {
-            fill_rect(c, 0, y, W as i32, ROW_H, t.acc);
+            if !pv {
+                fill_rect(c, 0, y, W as i32, ROW_H, t.acc);
+            }
+            let (ink, sub) = if pv {
+                (t.acc, t.dim)
+            } else {
+                (t.acc_ink, t.acc_ink)
+            };
             text::draw(
                 c,
                 f,
                 26.0,
                 (cy + 1) as f32,
                 crate::i18n::text("+  NEW PLAYLIST"),
-                &sty(Family::Sans, Weight::ExtraBold, 19.0, t.acc_ink, 0.04),
+                &sty(
+                    Family::Sans,
+                    Weight::ExtraBold,
+                    if pv { 21.0 } else { 19.0 },
+                    ink,
+                    0.04,
+                ),
             );
             text::draw(
                 c,
@@ -108,7 +123,7 @@ pub fn render_targets(
                 26.0,
                 (cy + 19) as f32,
                 crate::i18n::text("NAME IT, THEN ADD THIS TRACK"),
-                &sty(Family::Mono, Weight::Regular, 11.0, t.acc_ink, 0.14),
+                &sty(Family::Mono, Weight::Regular, 11.0, sub, 0.14),
             );
         } else {
             let target = &targets[index - 1];
@@ -145,7 +160,9 @@ pub fn render_targets(
                 &crate::library::n_tracks(target.tracks),
                 &sty(Family::Sans, Weight::Regular, 14.0, t.dim, 0.0),
             );
-            crate::icons::chevron(c, 452.0, cy as f32, 13.0, t.faint);
+            if !pv {
+                crate::icons::chevron(c, 452.0, cy as f32, 13.0, t.faint);
+            }
         }
         hline(c, y + ROW_H, t.line);
         y += ROW_H;
@@ -183,13 +200,19 @@ pub fn render_tracks(
     crate::chrome::header(c, t, f, playlist, Some(&caption));
 
     // ── the search band ──────────────────────────────────────────────────────────────────────
-    crate::widgets::fill_rect(c, 0, TOP, crate::canvas::W as i32, SEARCH_H, t.panel);
-    crate::widgets::hline(c, TOP + SEARCH_H - 1, t.line);
+    // Pivot: the field is an accent underline, not a band.
+    let pv = crate::pivot::on(t);
+    if pv {
+        fill_rect(c, 22, TOP + SEARCH_H - 10, 436, 2, t.acc);
+    } else {
+        crate::widgets::fill_rect(c, 0, TOP, crate::canvas::W as i32, SEARCH_H, t.panel);
+        crate::widgets::hline(c, TOP + SEARCH_H - 1, t.line);
+    }
     let has = !query.is_empty();
     let qs = sty(
         Family::Sans,
         Weight::Regular,
-        17.0,
+        if pv { 20.0 } else { 17.0 },
         if has { t.ink } else { t.faint },
         0.0,
     );

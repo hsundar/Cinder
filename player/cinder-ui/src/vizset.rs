@@ -105,6 +105,12 @@ fn vrow(
     label: &str,
     value: &str,
 ) -> i32 {
+    if crate::pivot::on(t) {
+        let r = crate::kit::Row::new(label)
+            .trail(crate::kit::Trail::Value(value))
+            .sel(sel);
+        return crate::kit::row(c, t, f, y, ROW_H, &r);
+    }
     let cy = y + ROW_H / 2;
     if sel {
         fill_rect(c, 0, y, crate::canvas::W as i32, ROW_H, t.row_sel);
@@ -142,7 +148,10 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, v: &VizSet, sel: usize) {
     let pw = crate::canvas::W as i32 - px * 2;
     let ph = PREVIEW_H - 28;
     let py = y0 + 8;
-    fill_rect(c, px, py, pw, ph, t.row_sel);
+    // Pivot draws the bars on the page itself: no panel behind them.
+    if !crate::pivot::on(t) {
+        fill_rect(c, px, py, pw, ph, t.row_sel);
+    }
     // `columns` is the Bands setting; with no live levels the preview shows that many synthetic
     // columns, so the setting is visible before any music plays.
     if v.levels.is_none() && !crate::viz::is_signal_style(v.kind) {
@@ -259,7 +268,12 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, v: &VizSet, sel: usize) {
         v.curve,
     );
     // A toggle, not a cycling value: markers are on or they are not.
-    {
+    if crate::pivot::on(t) {
+        let r = crate::kit::Row::new(crate::i18n::text("Peak markers"))
+            .trail(crate::kit::Trail::Switch(v.peaks))
+            .sel(sel == ROW_PEAKS);
+        y = crate::kit::row(c, t, f, y, ROW_H, &r);
+    } else {
         let cy = y + ROW_H / 2;
         if sel == ROW_PEAKS {
             fill_rect(c, 0, y, crate::canvas::W as i32, ROW_H, t.row_sel);

@@ -498,10 +498,14 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, bt: &Bt) {
     // catching, and near the middle of its much larger touch target (see `hit`).
     crate::kit::switch(c, t, crate::kit::RIGHT - crate::kit::SWITCH_W, 58, bt.on);
 
-    // connected card (or empty state)
+    // connected card (or empty state). Pivot draws no card, no frame and no dashes: the words
+    // stand on the page, and Disconnect is a word.
+    let pv = crate::pivot::on(t);
     if let Some(name) = bt.connected.filter(|_| bt.on) {
-        fill_rect(c, 22, CARD_Y, 436, CARD_H, t.panel);
-        stroke_rect(c, 22, CARD_Y, 436, CARD_H, t.line, 1);
+        if !pv {
+            fill_rect(c, 22, CARD_Y, 436, CARD_H, t.panel);
+            stroke_rect(c, 22, CARD_Y, 436, CARD_H, t.line, 1);
+        }
         // The tag carries the NEGOTIATED codec when the link reports one. This is the answer to
         // "am I actually getting LDAC" — the radio falls back silently, so the codec radio list
         // below (which is only a request) can say LDAC while the link is running something else.
@@ -541,21 +545,35 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, bt: &Bt) {
             &crate::widgets::fit(f, name, &nst, (dx - 12 - 40) as f32),
             &nst,
         );
-        stroke_rect(c, dx, dy, dw, dh, t.line, 1);
+        if !pv {
+            stroke_rect(c, dx, dy, dw, dh, t.line, 1);
+        }
         center(
             c,
             f,
             (dx + dw / 2) as f32,
             (dy + dh / 2 + 4) as f32,
-            crate::i18n::text("Disconnect"),
-            &sty(Family::Sans, Weight::SemiBold, 14.0, t.dim, 0.0),
+            &if pv {
+                crate::i18n::text("Disconnect").to_lowercase()
+            } else {
+                crate::i18n::text("Disconnect").to_string()
+            },
+            &sty(
+                Family::Sans,
+                Weight::SemiBold,
+                if pv { 17.0 } else { 14.0 },
+                if pv { t.acc } else { t.dim },
+                0.0,
+            ),
         );
     } else if bt.on && bt.connecting {
         // In flight. A solid card rather than the dashed empty state, because something IS
         // happening — and a moving spinner, because a connect can take several seconds and the
         // difference between "trying" and "failed" has to be visible without waiting it out.
-        fill_rect(c, 22, CARD_Y, 436, CARD_H, t.panel);
-        stroke_rect(c, 22, CARD_Y, 436, CARD_H, t.line, 1);
+        if !pv {
+            fill_rect(c, 22, CARD_Y, 436, CARD_H, t.panel);
+            stroke_rect(c, 22, CARD_Y, 436, CARD_H, t.line, 1);
+        }
         text::draw(
             c,
             f,
@@ -575,7 +593,7 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, bt: &Bt) {
         crate::widgets::spinner(c, 42, CARD_Y + CARD_H / 2, 9, 3, bt.busy_phase, t.acc);
     } else {
         let mut dx = 22;
-        while dx < 458 {
+        while dx < 458 && !pv {
             fill_rect(c, dx, CARD_Y + 28, 5, 1, t.line);
             fill_rect(c, dx, CARD_Y + CARD_H - 8, 5, 1, t.line);
             dx += 11;
@@ -646,7 +664,7 @@ pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, bt: &Bt) {
         for (i, d) in bt.paired.iter().take(PAIRED_SHOWN()).enumerate() {
             let y = PAIRED_Y0 + i as i32 * PAIRED_RH();
             let cy = y + PAIRED_RH() / 2;
-            if d.connected {
+            if d.connected && !pv {
                 fill_rect(c, 0, y, crate::canvas::W as i32, PAIRED_RH(), t.row_sel);
             }
             let icol = if d.connected { t.acc } else { t.dim };

@@ -568,7 +568,10 @@ pub fn render_view(c: &mut Canvas, t: &Theme, f: &FontSet, v: &QueueView) -> Lay
             crate::ui_format!("{left} LEFT", left = left)
         };
         let (long, short) = if pivot {
-            (crate::pivot::quiet(&long).into_owned(), crate::pivot::quiet(&short).into_owned())
+            (
+                crate::pivot::quiet(&long).into_owned(),
+                crate::pivot::quiet(&short).into_owned(),
+            )
         } else {
             (long, short)
         };
@@ -618,7 +621,13 @@ pub fn render_view(c: &mut Canvas, t: &Theme, f: &FontSet, v: &QueueView) -> Lay
         }
         match *slot {
             Slot::Head(sec) => {
-                let col = if sec == Section::Now { t.acc } else if pivot { t.dim } else { t.faint };
+                let col = if sec == Section::Now {
+                    t.acc
+                } else if pivot {
+                    t.dim
+                } else {
+                    t.faint
+                };
                 let hs = if pivot {
                     crate::pivot::face(Weight::Light, 20.0, col)
                 } else {
@@ -633,7 +642,11 @@ pub fn render_view(c: &mut Canvas, t: &Theme, f: &FontSet, v: &QueueView) -> Lay
                     (W as f32) - 44.0
                 };
                 let label = section_label(sec, v.album);
-                let label = if pivot { crate::pivot::quiet(&label).into_owned() } else { label };
+                let label = if pivot {
+                    crate::pivot::quiet(&label).into_owned()
+                } else {
+                    label
+                };
                 let lbl = crate::widgets::fit(f, &label, &hs, budget);
                 text::draw(c, f, 22.0, (y + HDR_H - 11) as f32, &lbl, &hs);
                 let action = match sec {
@@ -755,7 +768,14 @@ fn chip(c: &mut Canvas, t: &Theme, f: &FontSet, r: (i32, i32, i32, i32), label: 
         let st = crate::pivot::face(Weight::SemiBold, 16.0, t.acc);
         let label = crate::pivot::quiet(label);
         let label = crate::widgets::fit(f, &label, &st, (w - 4) as f32);
-        crate::widgets::center(c, f, (x + w / 2) as f32, (y + h / 2 + 6) as f32, &label, &st);
+        crate::widgets::center(
+            c,
+            f,
+            (x + w / 2) as f32,
+            (y + h / 2 + 6) as f32,
+            &label,
+            &st,
+        );
         return;
     }
     crate::widgets::stroke_rect(c, x, y, w, h, t.line, 1);
@@ -804,7 +824,13 @@ fn track_row(
             22.0,
             cy + 4.0,
             &idx,
-            &sty(fam(Family::Mono), Weight::Regular, if pivot { 14.0 } else { 12.0 }, idx_col, 0.0),
+            &sty(
+                fam(Family::Mono),
+                Weight::Regular,
+                if pivot { 14.0 } else { 12.0 },
+                idx_col,
+                0.0,
+            ),
         );
     }
     // Played rows fade their art too, so the eye finds the current row without reading a word.
@@ -835,7 +861,11 @@ fn track_row(
     };
     let tst = sty(
         fam(Family::Sans),
-        if pivot { Weight::Regular } else { Weight::SemiBold },
+        if pivot {
+            Weight::Regular
+        } else {
+            Weight::SemiBold
+        },
         crate::scale::ROW,
         title_col,
         0.0,
@@ -880,7 +910,13 @@ fn track_row(
         dx,
         cy + 4.0,
         &song.dur,
-        &sty(fam(Family::Mono), Weight::Regular, if pivot { 15.0 } else { 13.0 }, t.faint, 0.0),
+        &sty(
+            fam(Family::Mono),
+            Weight::Regular,
+            if pivot { 15.0 } else { 13.0 },
+            t.faint,
+            0.0,
+        ),
     );
     if grippy {
         grip(c, t, y, false);

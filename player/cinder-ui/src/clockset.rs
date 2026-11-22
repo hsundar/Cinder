@@ -240,10 +240,93 @@ fn value_of(fields: &Fields, f: usize) -> String {
     }
 }
 
+/// The editor the Pivot way: the date in large light type, each field a word and its value, the
+/// − and + as large accent signs with no boxes, and Set as an accent outline round its word. Every
+/// target is the box `btn_rect` and `set_rect` give.
+fn render_pivot(c: &mut Canvas, t: &Theme, f: &FontSet, fields: &Fields, sel: usize) {
+    use crate::pivot::face;
+    let y = fields[F_YEAR];
+    let m = fields[F_MONTH].clamp(1, 12);
+    let d = fields[F_DAY];
+    let s = format!(
+        "{} {} {} {} · {:02}:{:02}",
+        crate::i18n::text(weekday(y, m, d)),
+        d,
+        crate::i18n::text(MONTHS[(m - 1) as usize]),
+        y,
+        fields[F_HOUR],
+        fields[F_MIN]
+    )
+    .to_lowercase();
+    let big = face(Weight::Light, 24.0, t.acc);
+    let s = crate::widgets::fit(f, &s, &big, 436.0);
+    text::draw(c, f, 22.0, (TOP + 30) as f32, &s, &big);
+    let note = face(Weight::Regular, 14.0, t.dim);
+    let n = crate::widgets::fit(
+        f,
+        crate::i18n::text("UTC: the player keeps no time zone"),
+        &note,
+        436.0,
+    );
+    text::draw(c, f, 22.0, (TOP + 52) as f32, &n, &note);
+
+    let ft = fields_top();
+    for i in 0..FIELDS {
+        let cy = ft + i as i32 * ROW_H + ROW_H / 2;
+        let lc = if i == sel { t.acc } else { t.ink };
+        let ls = face(Weight::Regular, crate::scale::ROW + 2.0, lc);
+        let label = crate::i18n::text(label_of(i)).to_lowercase();
+        let label = crate::widgets::fit(f, &label, &ls, 150.0);
+        text::draw(c, f, 22.0, (cy + 7) as f32, &label, &ls);
+        right(
+            c,
+            f,
+            (MINUS_X - 16) as f32,
+            (cy + 9) as f32,
+            &value_of(fields, i).to_lowercase(),
+            &face(Weight::Light, 26.0, t.ink),
+        );
+        for (which, glyph) in [(0usize, "−"), (1, "+")] {
+            let (bx, by, bw, bh) = btn_rect(i, which);
+            center(
+                c,
+                f,
+                (bx + bw / 2) as f32,
+                (by + bh / 2 + 11) as f32,
+                glyph,
+                &face(Weight::Light, 34.0, t.acc),
+            );
+        }
+    }
+
+    let (sx, sy, sw, sh) = set_rect();
+    stroke_rect(c, sx, sy, sw, sh, t.acc, 2);
+    center(
+        c,
+        f,
+        (sx + sw / 2) as f32,
+        (sy + sh / 2 + 8) as f32,
+        &crate::i18n::text("SET CLOCK").to_lowercase(),
+        &face(Weight::Regular, 24.0, t.acc),
+    );
+    let foot = face(Weight::Regular, 14.0, t.dim);
+    let msg = crate::i18n::text(if crate::scale::large() {
+        "Saved to clock; survives power-off."
+    } else {
+        "Written to the hardware clock, so it survives a power cycle."
+    });
+    let msg = crate::widgets::fit(f, msg, &foot, 436.0);
+    text::draw(c, f, 22.0, (sy + sh + 28) as f32, &msg, &foot);
+}
+
 pub fn render(c: &mut Canvas, t: &Theme, f: &FontSet, fields: &Fields, sel: usize) {
     c.fill(t.bg);
     let y0 = crate::chrome::header(c, t, f, crate::i18n::text("Date & time"), None);
     debug_assert_eq!(y0, TOP, "clock editor top drifted from the hit test");
+    if crate::pivot::on(t) {
+        render_pivot(c, t, f, fields, sel);
+        return;
+    }
 
     // Live preview of exactly what Set will write, spelled out — "2026-08-17" is easy to misread
     // by a month when you are changing it a step at a time.

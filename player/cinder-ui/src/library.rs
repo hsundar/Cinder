@@ -1865,7 +1865,15 @@ pub fn tab_layout(f: &FontSet, folders: bool, books: bool) -> Vec<(Slot, f32, f3
 
 /// Draw the strip under a header ending at `y0`, `active` underlined. The Library draws it, and so
 /// does the Audiobooks list, which is the BOOKS tab of the same strip.
-pub(crate) fn tabs(c: &mut Canvas, t: &Theme, f: &FontSet, y0: i32, active: Slot, folders: bool, books: bool) -> i32 {
+pub(crate) fn tabs(
+    c: &mut Canvas,
+    t: &Theme,
+    f: &FontSet,
+    y0: i32,
+    active: Slot,
+    folders: bool,
+    books: bool,
+) -> i32 {
     let (size, layout) = strip_fit(f, folders, books);
     for ((slot, x, w), (_, label)) in layout.into_iter().zip(strip_labels(folders, books)) {
         let on = slot == active;
@@ -5334,6 +5342,15 @@ pub fn genre_render(
                 (g.name.clone(), g.tracks, lib.filter_genre == Some(g.id))
             }
         };
+        if crate::pivot::on(t) {
+            // The kit's row: what is on is its name in the accent; no wash, bar or rule.
+            let cl = format!("{count}");
+            let row = crate::kit::Row::new(&name)
+                .trail(crate::kit::Trail::Value(&cl))
+                .sel(on);
+            crate::kit::row(c, t, f, y, GENRE_RH(), &row);
+            continue;
+        }
         if on {
             fill_rect(c, 0, y, W as i32, GENRE_RH(), t.row_sel);
             fill_rect(c, 0, y, 4, GENRE_RH(), t.acc);

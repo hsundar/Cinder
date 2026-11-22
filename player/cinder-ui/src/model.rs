@@ -437,7 +437,13 @@ fn episode_date(path: &str) -> Option<&str> {
     let name = path.rsplit('/').next()?;
     let d = name.get(..10)?;
     let b = d.as_bytes();
-    let ok = b.iter().enumerate().all(|(i, c)| if i == 4 || i == 7 { *c == b'-' } else { c.is_ascii_digit() });
+    let ok = b.iter().enumerate().all(|(i, c)| {
+        if i == 4 || i == 7 {
+            *c == b'-'
+        } else {
+            c.is_ascii_digit()
+        }
+    });
     ok.then_some(d)
 }
 
