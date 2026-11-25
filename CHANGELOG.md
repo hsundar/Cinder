@@ -31,6 +31,11 @@ level the commit history supports; from `v0.1.6` onward, entries are written as 
   wells or chip boxes, and its actions as words in the accent. Nothing a finger lands on moves.
   *Device-unverified* (host tests, previews and the simulator).
 
+- **Podcast covers on MP3 episodes.** Sony's scanner misreads the cover frame of an ID3v2.4
+  file whose description is marked UTF-8 and records the picture 15 or 20 bytes past its start,
+  so every MP3 podcast showed no cover. Cinder now finds the picture's real start just before.
+  *Device-unverified.*
+
 - **Pivot polish.** The back chevron stays put while a section slides in; an artist's albums and
   songs slide between each other as the music's sections do; and Now Playing has the cover behind
   the page, faint, fading out before the title. *Device-unverified.*

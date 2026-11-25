@@ -81,14 +81,39 @@ fn load_db(db: &cinder_db::Db, object_id: i64) -> Option<Image> {
     }
     // Path 3: embedded blob in the source file at (offset, size).
     if !art.source_path.is_empty() && art.data_size > 0 {
-        let bytes = read_file_range(
+        let (off, len) = embedded_window(
             &art.source_path,
             art.data_offset.max(0) as u64,
             art.data_size as u64,
         )?;
+        let bytes = read_file_range(&art.source_path, off, len)?;
         return decode(&bytes);
     }
     None
+}
+
+/// How far back from the scanner's offset to look for the picture's real start. The two cases
+/// seen were 15 and 20 bytes; a frame header and an MIME type are well inside this.
+const REALIGN: u64 = 64;
+
+/// Where the picture the scanner recorded at (`off`, `len`) in `path` really is. Usually exactly
+/// there. But Sony's scanner miscounts an ID3v2.4 APIC frame whose text encoding is UTF-8 (`03`,
+/// which v2.3 lacks): it reads the description as UTF-16 and runs on to the first `00 00` inside
+/// the image, so `off` lands past the start and `len` is short by as much (Planet Money from
+/// baaja, 15 bytes; The Inquiry, 20 — found 2026-11-24, every MP3 podcast cover-less). Then the
+/// real start is the last JPEG or PNG signature within `REALIGN` bytes before `off`, and the
+/// window is widened back to it. None when neither place holds a picture.
+fn embedded_window(path: &str, off: u64, len: u64) -> Option<(u64, u64)> {
+    if read_file_range(path, off, 4).and_then(|m| image_mime(&m)).is_some() {
+        return Some((off, len));
+    }
+    let from = off.saturating_sub(REALIGN);
+    let back = read_file_range(path, from, off - from + 4)?;
+    let start = (0..back.len().saturating_sub(3))
+        .rev()
+        .find(|&i| back[i..].starts_with(&[0xFF, 0xD8, 0xFF]) || back[i..].starts_with(b"\x89PNG"))?;
+    let real = from + start as u64;
+    (real < off).then(|| (real, len + (off - real)))
 }
 
 /// Where a track's cover lies, undecoded: a byte window of a file (the picture embedded in the
@@ -116,15 +141,16 @@ fn image_mime(magic: &[u8]) -> Option<&'static str> {
 pub fn cover_ref(db: &cinder_db::Db, object_id: i64) -> Option<CoverRef> {
     if let Ok(Some(a)) = db.art_for_object(object_id) {
         if !a.source_path.is_empty() && a.data_size > 0 && (a.data_size as u64) <= MAX_BLOB {
-            let off = a.data_offset.max(0) as u64;
-            if let Some(mime) = read_file_range(&a.source_path, off, 4).and_then(|m| image_mime(&m))
-            {
-                return Some(CoverRef {
-                    path: a.source_path,
-                    off,
-                    len: a.data_size as u64,
-                    mime,
-                });
+            let found = embedded_window(&a.source_path, a.data_offset.max(0) as u64, a.data_size as u64);
+            if let Some((off, len)) = found {
+                if let Some(mime) = read_file_range(&a.source_path, off, 4).and_then(|m| image_mime(&m)) {
+                    return Some(CoverRef {
+                        path: a.source_path,
+                        off,
+                        len,
+                        mime,
+                    });
+                }
             }
         }
     }
@@ -704,6 +730,29 @@ mod tests {
         // Covers are read out of a FLAC at a recorded offset and length; a wrong length is the
         // realistic corruption, not random bytes. It must return None, not a partial image.
         assert!(decode(&TINY_JPEG_RGB[..TINY_JPEG_RGB.len() / 2]).is_none());
+    }
+
+    /// Sony's scanner points past the start of a picture in an ID3v2.4 UTF-8 APIC frame: the
+    /// window is moved back to the real start, by as much as it was short.
+    #[test]
+    fn a_misaligned_scanner_offset_is_found_again() {
+        let dir = std::env::temp_dir().join(format!("cinder-artalign-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("ep.mp3");
+        // ID3 header, an APIC frame header and body prefix as baaja's lofty wrote them, then the
+        // JPEG: Planet Money's layout, with the scanner's record 15 bytes into the picture.
+        let mut f = b"ID3\x04\x00\x00\x00\x00\x00\x00APIC\x00\x00\x00\x00\x00\x00\x03image/jpeg\x00\x03\x00".to_vec();
+        let at = f.len() as u64;
+        f.extend_from_slice(TINY_JPEG_RGB);
+        std::fs::write(&p, &f).unwrap();
+        let path = p.to_str().unwrap();
+        let len = TINY_JPEG_RGB.len() as u64;
+        assert_eq!(embedded_window(path, at, len), Some((at, len)), "a right offset is kept");
+        assert_eq!(embedded_window(path, at + 15, len - 15), Some((at, len)), "15 bytes in: moved back");
+        let (off, n) = embedded_window(path, at + 20, len - 20).unwrap();
+        assert!(decode(&read_file_range(path, off, n).unwrap()).is_some(), "and the whole picture decodes");
+        assert_eq!(embedded_window(path, 2, 4), None, "no picture anywhere near: none");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

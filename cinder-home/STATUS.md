@@ -15,6 +15,10 @@
 >   `App::render`) draws every Sans and Mono in Legible and says capitals labels in lower case,
 >   through `measure` and `draw` alike; `widgets::set_quiet_line` drops the dividers. Same
 >   geometry, so the hit tests are untouched; the overflow test walks every screen in Pivot.
+> - **Misaligned embedded covers**: `art_load::embedded_window` moves the scanner's
+>   (`dataoffset`, `datasize`) back to the last JPEG/PNG signature within 64 bytes when the bytes at
+>   the offset are not one (ID3v2.4 APIC with UTF-8 encoding, read by the scanner as UTF-16);
+>   used by `load_db` and `cover_ref`. Checklist 52.17.
 > - **Pivot polish**: `App::pivot_draw_slide` shifts the heading with `Canvas::shift_span_x` from
 >   `pivot::chevron_right()`, so the chevron stays; `pivot_artist_show` slides too; Pivot Now Playing
 >   draws `np_styles::backdrop` (the 480×480 `art_full` at 0.24, faded by `Canvas::fade_rows_to`).
