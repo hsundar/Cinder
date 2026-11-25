@@ -1,12 +1,13 @@
 //! Saved views (design handoff 5c) and the smart playlists they appear as (5g).
 //!
 //! A saved view is a NAME plus rules and a sort: "four stars and up, played this month, FLAC,
-//! most played first". The handoff also gives one a "show as" and a "pin to the Library bar"; both
-//! belong to the Library view bar, which is R3 and not built, so this model holds only what does
-//! something today (`docs/PLAN_redesign_2026-09.md`, Part G).
+//! most played first". The handoff also gives one a "show as" and a "pin to the Library bar"; the
+//! bar lists every view in its Filter sheet instead, so this model holds only what does something
+//! (`docs/PLAN_redesign_2026-09.md`, Part G).
 //!
-//! Today a view appears in exactly one place: the Library's Playlists tab, as a SMART playlist
-//! above the ordinary ones, whose members are whatever the rules match right now. Nothing about the
+//! A view appears in two places: the Library's Playlists tab, as a SMART playlist above the
+//! ordinary ones, and the view bar's Filter sheet, where picking it filters Songs and Albums
+//! (`Library::filter_view`). Either way its members are whatever the rules match right now. Nothing about the
 //! members is stored — a view is the question, not the answer — so a rating given or a song played
 //! is reflected the next time the list is built.
 //!

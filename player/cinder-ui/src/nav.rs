@@ -2772,6 +2772,7 @@ impl App {
         let mut lib = std::mem::take(&mut self.lib);
         lib.filter_genre = None;
         lib.filter_hires = false;
+        lib.filter_view = None;
         // The palette FILES are not a preference — they are what is in the folder, like the library.
         // The choice between them resets; the list of them stays.
         let palettes = std::mem::take(&mut self.palettes);
@@ -5569,12 +5570,11 @@ impl App {
         // tapping anywhere else on the bar opens the **Menu** — the rest of the strip stays one big
         // forgiving Menu target. Both zones come from `chrome::status_hit`, which is built from the
         // same constants that place the glyphs. Header back chevron → Back (below).
-        // The Library's SORT/ORDER chip, view button and search button claim the strip's bottom
-        // edge above them — see `library::SORT_HIT_TOP`. Only there: `tap_library` handles them.
+        // The Library's search button claims the strip's bottom edge above it — see
+        // `library::SORT_HIT_TOP`. Only there: `tap_library` handles it.
         let sort_chip = self.current() == Screen::Library
-            && (library::hit_sort_chip(self.lib_tab, x, y, self.search_enabled)
-                || library::hit_view_button(x, y, self.search_enabled)
-                || (self.search_enabled && library::hit_search(x, y)));
+            && self.search_enabled
+            && library::hit_search(x, y);
         match crate::chrome::status_hit(x, y).filter(|_| !sort_chip && !self.landscape()) {
             Some(crate::chrome::StatusTap::Shelf) => {
                 self.open_shelf();
@@ -6029,31 +6029,43 @@ impl App {
             }
             Screen::GenreFilter => {
                 if let Some(r) = library::genre_row_at(&self.lib, y, self.genre_scroll_px) {
-                    let changed = match r {
-                        // A TOGGLE, and the one row that does not close the sheet: Hi-Res and a
-                        // genre AND together, so setting one and then the other has to be possible
-                        // without walking back in.
-                        library::GENRE_ROW_HIRES => {
+                    let kind = library::filter_row(&self.lib, r);
+                    let changed = match kind {
+                        // A TOGGLE, and the one row that does not close the sheet: Hi-Res ANDs
+                        // with a genre or a view, so setting one and then the other has to be
+                        // possible without walking back in.
+                        Some(library::FilterRow::HiRes) => {
                             self.lib.filter_hires = !self.lib.filter_hires;
                             true
                         }
-                        // "All genres" clears the genre axis. Setting and clearing are the same
-                        // gesture, so the screen needs no second control for it.
-                        library::GENRE_ROW_ALL => {
-                            let changed = self.lib.filter_genre.is_some();
+                        // "All genres" clears the genre and the view. Setting and clearing are the
+                        // same gesture, so the screen needs no second control for it.
+                        Some(library::FilterRow::All) => {
+                            let changed =
+                                self.lib.filter_genre.is_some() || self.lib.filter_view.is_some();
+                            self.lib.filter_genre = None;
+                            self.lib.filter_view = None;
+                            changed
+                        }
+                        // A saved view and a genre are one choice: either clears the other.
+                        Some(library::FilterRow::View(i)) => {
+                            let want = self.lib.saved_views.get(i).cloned();
+                            let changed = want != self.lib.filter_view
+                                || self.lib.filter_genre.is_some();
+                            self.lib.filter_view = want;
+                            self.lib.filter_now = self.clock_epoch;
                             self.lib.filter_genre = None;
                             changed
                         }
-                        _ => {
-                            let want = self
-                                .lib
-                                .genres
-                                .get(r - library::GENRE_HEAD_ROWS)
-                                .map(|g| g.id);
-                            let changed = want != self.lib.filter_genre;
+                        Some(library::FilterRow::Genre(g)) => {
+                            let want = self.lib.genres.get(g).map(|g| g.id);
+                            let changed = want != self.lib.filter_genre
+                                || self.lib.filter_view.is_some();
                             self.lib.filter_genre = want;
+                            self.lib.filter_view = None;
                             changed
                         }
+                        None => false,
                     };
                     if changed {
                         // The visible set just changed, so anything derived from it is stale: the
@@ -6066,7 +6078,7 @@ impl App {
                     }
                     // Back to the list on a genre choice — you came here to answer one question.
                     // The Hi-Res toggle stays, because it is the one row you might want to combine.
-                    if r != library::GENRE_ROW_HIRES {
+                    if kind != Some(library::FilterRow::HiRes) {
                         self.pop();
                     }
                 }
@@ -6780,23 +6792,6 @@ impl App {
             self.open_search();
             return vec![];
         }
-        if library::hit_view_button(x, y, self.search_enabled) {
-            self.cycle_lib_view();
-            return vec![];
-        }
-        // SORT/ORDER chip in the header's right slot (right of the back chevron's x<80 band).
-        // Songs cycles the SORT chip; Albums cycles the ORDER chip. Both reset the list position.
-        if library::hit_sort_chip(self.lib_tab, x, y, self.search_enabled) {
-            match self.lib_tab {
-                Tab::Songs => self.lib_sort = (self.lib_sort + 1) % library::SORTS.len(),
-                Tab::Albums => self.cycle_album_sort(),
-                _ => return vec![],
-            }
-            self.lib_idx = 0;
-            self.lib_scroll_px = 0;
-            self.fling_v = 0.0;
-            return vec![];
-        }
         if (library::TAB_TOP..library::tab_hit_bottom(self.lib_band())).contains(&y) {
             // Resolve against the strip as it was LAST DRAWN. These used to be hardcoded x
             // thresholds that did not match the measured layout — at the default size "ALBUMS" is
@@ -6813,13 +6808,33 @@ impl App {
             }
             return vec![];
         }
-        // The genre filter strip, above the list. Checked before the rows for the same reason the
-        // A-Z rail is: it is not part of the list, so a tap here must never reach one.
+        // The view bar, above the list: sort · filter · rows. Checked before the rows for the same
+        // reason the A-Z rail is: it is not part of the list, so a tap here must never reach one.
         let band = self.lib_band();
-        if library::filter_hit_at(self.lib_tab, y, band) {
-            self.genre_scroll_px = 0;
-            self.push(Screen::GenreFilter);
-            return vec![];
+        match library::bar_cell_at(self.lib_tab, x, y, band) {
+            Some(library::BarCell::Sort) => {
+                match self.lib_tab {
+                    Tab::Songs => self.lib_sort = (self.lib_sort + 1) % library::SORTS.len(),
+                    Tab::Albums => self.cycle_album_sort(),
+                    _ => return vec![],
+                }
+                // A new order is a new list: start it from the top.
+                self.lib_idx = 0;
+                self.lib_scroll_px = 0;
+                self.lib_band_hide = 0;
+                self.fling_v = 0.0;
+                return vec![];
+            }
+            Some(library::BarCell::Filter) => {
+                self.genre_scroll_px = 0;
+                self.push(Screen::GenreFilter);
+                return vec![];
+            }
+            Some(library::BarCell::Rows) => {
+                self.cycle_lib_view();
+                return vec![];
+            }
+            None => {}
         }
         // "NEW PLAYLIST", between the shuffle band and the list on the Playlists tab. Tested
         // before the rows for the same reason as the filter strip: it is not part of the list.
@@ -7206,6 +7221,13 @@ impl App {
             })
             .collect();
         self.lib.playlists.splice(0..0, rows);
+        // The Filter sheet lists the views, and a view picked there follows its edits: the same
+        // view (by name) with its new rules, or nothing once it is deleted or renamed.
+        self.lib.saved_views = self.views.clone();
+        if let Some(id) = self.lib.filter_view.as_ref().map(|v| v.id()) {
+            self.lib.filter_view = self.views.iter().find(|v| v.id() == id).cloned();
+            self.lib.filter_now = now;
+        }
         self.playlist_view = open
             .and_then(|id| self.lib.playlists.iter().position(|p| p.id == id))
             .unwrap_or_else(|| {
@@ -17455,8 +17477,8 @@ mod tests {
         a.stack = vec![Screen::Library];
         a.lib_tab = crate::library::Tab::Songs;
         // Tapping the strip opens the picker.
-        let y = library::filter_top() + library::FILTER_H / 2;
-        assert!(library::filter_hit(a.lib_tab, y));
+        let y = library::bar_top_base() + library::BAR_H / 2;
+        assert!(library::filter_hit(a.lib_tab, 240, y));
         a.tap(240, y);
         assert_eq!(a.current(), Screen::GenreFilter);
 
@@ -17559,53 +17581,123 @@ mod tests {
         let (_, by, _, bh) = library::library_shuffle_band();
         let band_bottom = by + bh;
         assert!(
-            library::filter_top() > band_bottom,
+            library::bar_top_base() > band_bottom,
             "the strip starts inside the band"
         );
         assert!(
-            library::filter_top() - band_bottom >= 4,
+            library::bar_top_base() - band_bottom >= 4,
             "less than 4px of dead space between shuffle and filter"
         );
         // Big enough to hit: 44 is the smallest row this UI uses anywhere.
         const {
             assert!(
-                library::FILTER_H >= 44,
+                library::BAR_H >= 44,
                 "the strip is smaller than a usable row"
             )
         };
         // The band must not answer for a tap on the strip, and vice versa.
-        for y in library::filter_top()..library::filter_top() + library::FILTER_H {
+        for y in library::bar_top_base()..library::bar_top_base() + library::BAR_H {
             assert!(
-                library::filter_hit(Tab::Songs, y),
+                library::filter_hit(Tab::Songs, 240, y),
                 "y={y} is not on the strip"
             );
             assert!(y >= band_bottom, "y={y} is still inside the shuffle band");
         }
         assert!(
-            !library::filter_hit(Tab::Songs, band_bottom),
+            !library::filter_hit(Tab::Songs, 240, band_bottom),
             "the band's last row hits the strip"
         );
         // And the list still starts below the strip, with the gap accounted for.
         assert!(
-            library::list_top(Tab::Songs) >= library::filter_top() + library::FILTER_H,
+            library::list_top(Tab::Songs) >= library::bar_top_base() + library::BAR_H,
             "the list draws underneath the strip"
         );
     }
 
-    /// The filter strip only exists on the two tabs a genre can scope, and `list_top` moves with it
-    /// so the list never draws underneath it.
+    /// Every tab has the view bar, and `list_top` moves with it so the list never draws underneath
+    /// it. SORT and FILTER are on the two tabs a genre can scope; elsewhere the bar is the rows
+    /// switch from edge to edge.
     #[test]
-    fn only_track_tabs_carry_the_filter_strip() {
-        use crate::library::{self, Tab};
-        for tab in [Tab::Songs, Tab::Albums] {
-            assert!(library::has_filter(tab));
-            assert!(library::list_top(tab) - library::filter_top() >= library::FILTER_H);
-            assert!(library::filter_hit(tab, library::filter_top() + 1));
+    fn every_tab_has_the_bar_and_only_track_tabs_sort_and_filter() {
+        use crate::library::{self, BarCell, Tab};
+        for tab in [Tab::Songs, Tab::Albums, Tab::Artists, Tab::Playlists] {
+            let y = library::bar_top(tab) + 1;
+            assert!(library::list_top(tab) - library::bar_top(tab) >= library::BAR_H);
+            assert_eq!(library::bar_cell_at(tab, 470, y, 0), Some(BarCell::Rows));
+            let (sort, filter) = if library::has_filter(tab) {
+                (Some(BarCell::Sort), Some(BarCell::Filter))
+            } else {
+                (Some(BarCell::Rows), Some(BarCell::Rows))
+            };
+            assert_eq!(library::bar_cell_at(tab, 30, y, 0), sort, "{tab:?}");
+            assert_eq!(library::bar_cell_at(tab, 300, y, 0), filter, "{tab:?}");
+            assert_eq!(library::bar_cell_at(tab, 300, y - 2, 0), None, "above it");
         }
-        for tab in [Tab::Artists, Tab::Playlists] {
-            assert!(!library::has_filter(tab));
-            assert!(!library::filter_hit(tab, library::filter_top() + 1));
+        assert!(library::has_filter(Tab::Songs) && library::has_filter(Tab::Albums));
+        assert!(!library::has_filter(Tab::Artists) && !library::has_filter(Tab::Playlists));
+    }
+
+    /// The bar's SORT steps the order and FILTER opens the sheet, and a saved view picked there
+    /// filters the list until All is picked; a view and a genre are one choice.
+    #[test]
+    fn the_bar_sorts_filters_and_a_saved_view_filters_the_list() {
+        use crate::library::{self, FilterRow, Tab};
+        let mut a = unlocked();
+        a.go(Screen::Library);
+        a.lib_tab = Tab::Songs;
+        let y = library::bar_top(Tab::Songs) + library::BAR_H / 2;
+        let sort0 = a.lib_sort;
+        a.tap(60, y);
+        assert_eq!(a.current(), Screen::Library);
+        assert_ne!(a.lib_sort, sort0, "SORT stepped");
+
+        // One view: songs rated four stars and up. Rate two songs.
+        a.views = vec![crate::views::SavedView {
+            min_rating: 4,
+            ..crate::views::SavedView::new("Favourites")
+        }];
+        let ids: Vec<i64> = a.lib.songs.iter().take(2).map(|s| s.object_id).collect();
+        for id in &ids {
+            a.lib.stats.insert(
+                *id,
+                crate::model::TrackStat {
+                    rating: 5,
+                    ..Default::default()
+                },
+            );
         }
+        a.rebuild_smart(None);
+        assert_eq!(
+            library::filter_row(&a.lib, library::GENRE_HEAD_ROWS),
+            Some(FilterRow::View(0))
+        );
+        assert_eq!(
+            library::filter_row(&a.lib, library::GENRE_HEAD_ROWS + 1),
+            Some(FilterRow::Genre(0))
+        );
+
+        a.tap(300, y);
+        assert_eq!(a.current(), Screen::GenreFilter);
+        let row_y = |r: usize| library::GENRE_TOP + r as i32 * library::GENRE_RH() + 4;
+        a.tap(240, row_y(library::GENRE_HEAD_ROWS));
+        assert_eq!(a.current(), Screen::Library, "a choice closes the sheet");
+        assert_eq!(a.lib.visible_songs(), 2);
+        assert_eq!(a.lib.filter_name().as_deref(), Some("Favourites"));
+
+        // A genre replaces the view.
+        a.tap(300, y);
+        a.tap(240, row_y(library::GENRE_HEAD_ROWS + 1));
+        assert!(a.lib.filter_view.is_none());
+        assert!(a.lib.filter_genre.is_some());
+
+        // Back to the view, then delete it: the filter goes with it.
+        a.tap(300, y);
+        a.tap(240, row_y(library::GENRE_HEAD_ROWS));
+        assert!(a.lib.filter_view.is_some() && a.lib.filter_genre.is_none());
+        a.views.clear();
+        a.rebuild_smart(None);
+        assert!(a.lib.filter_view.is_none());
+        assert!(!a.lib.filtered());
     }
 
     /// Balance cycles like the VPT and DC-Phase pills beside it, and wraps back to CENTRE — the
@@ -18879,8 +18971,7 @@ mod tests {
     #[test]
     fn the_view_button_switches_the_layout_and_remembers_it() {
         let mut a = long_songs();
-        let (x0, x1) = library::view_button_x(a.search_enabled);
-        let (vx, vy) = ((x0 + x1) / 2, 62);
+        let (vx, vy) = (444, library::bar_top(Tab::Songs) + library::BAR_H / 2);
         // Scroll to the 20th song, then switch: the 20th song is still the first one on screen.
         a.lib_scroll_px = 20 * library::row_h(Tab::Songs);
         a.tap(vx, vy);
@@ -19018,7 +19109,7 @@ mod tests {
             "hidden: the band is not there"
         );
         assert!(
-            library::filter_hit_at(Tab::Songs, y, b.lib_band()),
+            library::bar_cell_at(Tab::Songs, x, y, b.lib_band()).is_some(),
             "hidden: the filter moved up under it"
         );
         let acts = b.tap(x, y);
@@ -19027,7 +19118,7 @@ mod tests {
             "hidden: no shuffle — {acts:?}"
         );
 
-        // Artists has no filter strip, so there the ROWS take the band's place.
+        // Artists has the bar too (the rows switch alone), and it takes the band's place there.
         let mut ar = long_songs();
         ar.lib_tab = Tab::Artists;
         let base = ar.lib.artists.clone();
@@ -19037,10 +19128,10 @@ mod tests {
         ar.lib_scroll_px = 0;
         ar.scroll_px(600);
         assert_eq!(ar.lib_band(), library::band_slide(Tab::Artists));
-        assert!(
-            library::hit_row_at(Tab::Artists, &ar.lib, ar.lib_scroll_px, y, ar.lib_band())
-                .is_some(),
-            "hidden: on a tab with no filter that y is an artist row"
+        assert_eq!(
+            library::bar_cell_at(Tab::Artists, x, y, ar.lib_band()),
+            Some(library::BarCell::Rows),
+            "hidden: on Artists that y is the bar's rows switch"
         );
     }
 
@@ -19084,18 +19175,20 @@ mod tests {
         a.scroll_px(600);
         assert_eq!(a.lib_band(), slide);
         assert_eq!(
-            y + h - a.lib_band(),
+            library::bar_top(Tab::Playlists) - a.lib_band(),
             library::TABS_BOTTOM,
-            "fully under the tab strip, and no further"
+            "fully under the tab strip, and no further: the bar meets the tabs"
         );
+        assert!(y + h - a.lib_band() < library::TABS_BOTTOM);
         assert!(
             !library::hit_new_playlist_at(Tab::Playlists, px, py, a.lib_band()),
             "hidden: it is not there"
         );
         assert!(
             library::hit_row_at(Tab::Playlists, &a.lib, a.lib_scroll_px, py, a.lib_band())
-                .is_some(),
-            "hidden: its old place is a playlist row"
+                .is_some()
+                || library::bar_cell_at(Tab::Playlists, px, py, a.lib_band()).is_some(),
+            "hidden: its old place is the bar or a playlist row"
         );
         let mut b = many();
         b.scroll_px(600);
@@ -27647,31 +27740,14 @@ mod tests {
             Some(StatusTap::Menu),
             "the strip alone would take it"
         );
-        let sort0 = a.lib_sort;
-        a.tap(344, y);
-        assert_eq!(a.current(), Screen::Library, "no Menu");
-        assert_ne!(a.lib_sort, sort0, "the tap cycled SORT");
-        a.tap(390, y);
-        assert_eq!(a.current(), Screen::Library, "no Shelf");
-        // A count caption is not a control: the strip keeps its full height there.
-        a.lib_tab = Tab::Artists;
+        // The header's right end is a count now, not a control: the strip keeps its full height
+        // there on every tab. Only search, when it is installed, claims the strip's edge.
         a.tap(344, y);
         assert_eq!(a.current(), Screen::Menu);
-        // The view button sits under the strip too, on every tab.
         a.go(Screen::Library);
-        let view0 = library::view_of(&a.lib, a.lib_tab);
-        let (vx0, vx1) = library::view_button_x(a.search_enabled);
-        a.tap((vx0 + vx1) / 2, y);
-        assert_eq!(
-            a.current(),
-            Screen::Library,
-            "the view button, not the Menu"
-        );
-        assert_ne!(
-            library::view_of(&a.lib, a.lib_tab),
-            view0,
-            "the tap cycled the view"
-        );
+        a.search_enabled = true;
+        a.tap((library::SEARCH_X0 + library::SEARCH_X1) / 2, y);
+        assert_ne!(a.current(), Screen::Menu, "search, not the Menu");
     }
 
     /// The tab strip draws 35 px; with the band in place its target runs down to the band.

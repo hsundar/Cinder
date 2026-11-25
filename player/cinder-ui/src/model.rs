@@ -400,6 +400,15 @@ impl LibView {
             LibView::Compact => "Compact view",
         }
     }
+
+    /// Its name alone, as the Library's view bar shows it.
+    pub fn short(self) -> &'static str {
+        match self {
+            LibView::List => crate::i18n::text("List"),
+            LibView::Grid => crate::i18n::text("Grid"),
+            LibView::Compact => crate::i18n::text("Compact"),
+        }
+    }
 }
 
 /// One audiobook: a folder under `LEARNING` and its files, in play order.
@@ -545,6 +554,15 @@ pub struct Library {
     /// The other filter axis: show only Hi-Res tracks. Independent of the genre — the two AND
     /// together, so "Hi-Res jazz" is expressible and neither has to know about the other.
     pub filter_hires: bool,
+    /// The third filter axis: a saved view (handoff 5c), chosen in the Filter sheet. It and the
+    /// genre are one choice, so setting one clears the other; Hi-Res still ANDs with either. A
+    /// copy, not an index, so a view list that changes under it cannot point it at another view;
+    /// `App::rebuild_smart` refreshes it (or drops it) whenever the views change.
+    pub filter_view: Option<crate::views::SavedView>,
+    /// The clock `filter_view`'s date rules are judged against, set with it.
+    pub filter_now: i64,
+    /// The saved views, copied in by `App::rebuild_smart`, so the Filter sheet can list them.
+    pub saved_views: Vec<crate::views::SavedView>,
     /// How many tracks carry the Hi-Res flag. Counted once at library build so the picker can
     /// label the row without sweeping every track each frame it is on screen.
     pub hires_tracks: u32,
@@ -620,6 +638,11 @@ impl Library {
         if self.filter_hires && !s.is_hires {
             return false;
         }
+        if let Some(v) = &self.filter_view {
+            if !v.matches(s, self.stat(s.object_id), self.filter_now) {
+                return false;
+            }
+        }
         match self.filter_genre {
             None => true,
             Some(id) => s.genre_id == id,
@@ -628,7 +651,7 @@ impl Library {
     /// Is anything filtering at all? Cheaper than asking each axis at every call site, and it is
     /// the question `visible_songs` and the strip actually want.
     pub fn filtered(&self) -> bool {
-        self.filter_genre.is_some() || self.filter_hires
+        self.filter_genre.is_some() || self.filter_hires || self.filter_view.is_some()
     }
     /// How many tracks are visible under the active filter. Sort-independent, so `row_count` can
     /// answer without knowing which sort chip is selected.
@@ -644,7 +667,8 @@ impl Library {
         let genre = self
             .filter_genre
             .and_then(|id| self.genres.iter().find(|g| g.id == id))
-            .map(|g| g.name.clone());
+            .map(|g| g.name.clone())
+            .or_else(|| self.filter_view.as_ref().map(|v| v.name.clone()));
         match (genre, self.filter_hires) {
             (Some(g), false) => Some(g),
             (Some(g), true) => Some(format!("{g} · Hi-Res")),
@@ -918,6 +942,9 @@ impl Library {
             genres,
             filter_genre: None,
             filter_hires: false,
+            filter_view: None,
+            filter_now: 0,
+            saved_views: Vec::new(),
             ignore_the: false,
             ranks: SortRanks::default(),
             hires_tracks,

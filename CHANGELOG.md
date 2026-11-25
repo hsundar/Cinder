@@ -18,6 +18,15 @@ level the commit history supports; from `v0.1.6` onward, entries are written as 
 
 ### Added
 
+- **The Library view bar** (handoff 1a, R3): the FILTER strip under the shuffle band became a bar
+  on every tab, with SORT (a tap steps the order), FILTER (opens the Filter sheet) and the rows
+  switch (list, grid, compact). The header's SORT/ORDER chip and view button moved into it, so the
+  header now shows the count beside search. Artists and Playlists get the bar too, as the rows
+  switch alone; on Playlists it sits under NEW PLAYLIST, which still slides away with the band. The
+  Filter sheet lists the saved views (smart playlists, with their diamond) above the genres: picking
+  one filters Songs and Albums by its rules and names it in the bar. A view and a genre are one
+  choice; Hi-Res still combines with either. The Albums tab now honours Hi-Res on its own too.
+  *Host-tested; device-unverified.*
 - **Pivot, a large-type style** (Settings ▸ Display ▸ Style ▸ Pivot), set in Atkinson Hyperlegible
   Next (OFL, bundled). Home is the menu as big lowercase words with what is playing on top; the
   Library has a large "music" (or "books") heading over a strip of sections, the current one first

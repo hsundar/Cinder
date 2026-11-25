@@ -1531,6 +1531,35 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
             ("genre_picker", &|c: &mut Canvas| {
                 library::genre_render(c, &theme, &fonts, &lib, 0, false)
             }),
+            // The Filter sheet with a saved view above the genres (handoff 5c: open a view from
+            // the bar), and the Songs list filtered by it, the bar naming it.
+            ("genre_picker_views", &|c: &mut Canvas| {
+                let mut l = r4_playlists(&lib);
+                l.saved_views = vec![cinder_ui::views::SavedView::new("Late favourites")];
+                l.filter_view = l.saved_views.first().cloned();
+                library::genre_render(c, &theme, &fonts, &l, 0, false)
+            }),
+            ("library_songs_view_filtered", &|c: &mut Canvas| {
+                let mut l = r4_playlists(&lib);
+                l.saved_views = vec![cinder_ui::views::SavedView::new("Late favourites")];
+                l.filter_view = l.saved_views.first().cloned();
+                library::render(
+                    c,
+                    &theme,
+                    &fonts,
+                    library::Tab::Songs,
+                    0,
+                    0,
+                    1,
+                    0,
+                    None,
+                    &l,
+                    None,
+                    false,
+                    0,
+                    true,
+                );
+            }),
             ("library_songs_filtered", &|c: &mut Canvas| {
                 let mut l = lib.clone();
                 l.filter_genre = l.genres.first().map(|g| g.id);

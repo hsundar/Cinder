@@ -129,9 +129,9 @@ shuffle=settings
 * If the file changed underneath, a view in the file that Cinder has never seen is kept when Cinder
   next saves. A view deleted on the player stays deleted.
 
-The handoff's saved view also has *show as* and *pin to the Library bar*. Both belong to the
-Library view bar, which is not built yet (R3), so the file has no keys for them. They will be added
-as new keys, which older builds will ignore.
+The handoff's saved view also has *show as* and *pin to the Library bar*. The Library view bar
+lists every view in its Filter sheet, so neither is built and the file has no keys for them. If
+they come, they will be new keys, which older builds ignore.
 
 ## `cinder_books.tsv` — where you are in each audiobook
 

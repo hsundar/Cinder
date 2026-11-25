@@ -11,9 +11,9 @@
 //!   SHUFFLE      Settings · Songs · Albums · Artists   (what this list's Shuffle band deals)
 //!   row       Delete smart playlist                  (only when editing one that exists)
 //!
-//! The mock also has "show as" chips and a "Pin to the Library bar" switch. Both are the Library
-//! view bar's, which is R3 and not built; a switch that pins to a bar that does not exist would be
-//! a row that does nothing, so they wait for it (`PLAN_redesign_2026-09.md` Part G). The mock's
+//! The mock also has "show as" chips and a "Pin to the Library bar" switch. The bar lists every
+//! view in its Filter sheet, so a pin would decide nothing; neither is drawn
+//! (`PLAN_redesign_2026-09.md` Part G). The mock's
 //! "+ add" for further rules is the same: the four rules here are the ones the data exists for.
 //!
 //! One page, no scroll: `section_top` is the single table the renderer and the hit tests share.

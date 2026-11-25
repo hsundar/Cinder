@@ -294,30 +294,7 @@ pub fn cursor_h(tab: Tab, lib: &Library) -> i32 {
     }
 }
 
-/// The header's view button: in the search button's place when search is not installed, and just
-/// left of it when it is. Fixed x for the same reason search is — the same place on every tab and
-/// at every UI scale; the title is fitted to end before it.
-///
-/// 48 wide, not search's 56: at the largest text size the ORDER caption starts at x 293 and the
-/// title ends at 184, and a 56 px button either side of search would clip one or the other.
-pub const VIEW_W: i32 = 48;
-
-pub fn view_button_x(search: bool) -> (i32, i32) {
-    if search {
-        (SEARCH_X0 - VIEW_W, SEARCH_X0)
-    } else {
-        (SEARCH_X0, SEARCH_X0 + VIEW_W)
-    }
-}
-
-/// From [`SORT_HIT_TOP`], like the chip: the button sits under the Menu end of the status strip, and
-/// a tap a little high opened the Menu instead (reported 2026-10-30).
-pub fn hit_view_button(x: i32, y: i32, search: bool) -> bool {
-    let (x0, x1) = view_button_x(search);
-    (SORT_HIT_TOP..crate::chrome::HEADER_BOTTOM).contains(&y) && (x0..x1).contains(&x)
-}
-
-/// The view button's icon: the layout the tab is in NOW, so the button reads as a label of the
+/// The rows switch's icon: the layout the tab is in NOW, so the switch reads as a label of the
 /// screen as well as a control. A tap moves to the next one (`next_view`) and the toast names it.
 fn view_icon(c: &mut Canvas, cx: f32, cy: f32, v: LibView, col: Rgb888) {
     match v {
@@ -613,46 +590,53 @@ pub fn hit_shuffle_band_at(x: i32, y: i32, hide: i32) -> bool {
 
 /// Top y of each tab's row area — derived from the band it sits under, so moving the band moves
 /// the list (and the hit test) with it instead of desyncing.
-/// Height of the genre-filter strip. It sits BELOW the shuffle band and above the list, so the
-/// band's geometry and hit test are untouched and only `list_top` moves — and everything that
-/// positions or hit-tests the list already derives from `list_top`.
-pub const FILTER_H: i32 = 44;
+/// Height of the view bar (handoff 1a: "sort · filter · rows"). It grew out of the genre-filter
+/// strip and sits where that did: BELOW the shuffle band and above the list, so the band's
+/// geometry and hit test are untouched and only `list_top` moves — and everything that positions
+/// or hit-tests the list already derives from `list_top`.
+pub const BAR_H: i32 = 44;
 
-/// Dead space between the shuffle band and the filter strip. Not decoration: without it the two
+/// Dead space between the shuffle band and what is under it. Not decoration: without it the two
 /// targets share an edge, and every near-miss upward fires Shuffle — which starts playing music.
 /// An accidental filter change is a visual surprise; an accidental shuffle is an audible one.
-pub const FILTER_GAP: i32 = 6;
+pub const BAR_GAP: i32 = 6;
 
-/// Does this tab carry the filter strip? Songs and Albums are the two lists a genre can scope;
-/// Artists and Playlists are not track lists, so filtering them would mean guessing what the user
-/// meant by "an artist in this genre".
+/// Does this tab's bar carry SORT and FILTER? Songs and Albums are the two lists a genre can scope
+/// and the two with an order to choose; Artists and Playlists are not track lists, so filtering
+/// them would mean guessing what the user meant by "an artist in this genre". Their bar is the
+/// rows switch alone.
 pub fn has_filter(tab: Tab) -> bool {
     matches!(tab, Tab::Songs | Tab::Albums)
 }
 
-/// Screen-y of the filter strip's top, for the render and the hit test to share.
-pub fn filter_top() -> i32 {
+/// Screen-y just under the shuffle band and its gap: where the bar starts on most tabs, and where
+/// NEW PLAYLIST starts on Playlists.
+pub fn bar_top_base() -> i32 {
     let (_, by, _, bh) = library_shuffle_band();
-    by + bh + FILTER_GAP
+    by + bh + BAR_GAP
+}
+
+/// Screen-y of `tab`'s bar, for the render and the hit test to share. On Playlists it sits under
+/// NEW PLAYLIST, so the row still slides away with the band (asked for 2026-09-11) while the bar
+/// stays.
+pub fn bar_top(tab: Tab) -> i32 {
+    match tab {
+        Tab::Playlists => {
+            let (_, y, _, h) = new_playlist_rect();
+            y + h + 4
+        }
+        _ => bar_top_base(),
+    }
 }
 
 /// How far the block under the tabs can slide up on `tab`. Derived, not a constant, so it follows
 /// the band if the band ever moves.
 ///
-/// On Songs, Albums and Artists it is exactly far enough for the shuffle band to go fully under the
-/// tab strip, which puts the filter strip (or the list) directly beneath the tabs. The filter stays
-/// reachable at any scroll depth: it says what the list is showing.
-///
-/// On Playlists NEW PLAYLIST goes too, all the way to the tab strip — asked for 2026-09-11, once the
-/// band had passed on the device. Like the band it is back the moment the list scrolls up.
+/// Exactly far enough for everything above the bar — the shuffle band, and NEW PLAYLIST on
+/// Playlists — to go fully under the tab strip, which puts the bar directly beneath the tabs. The
+/// bar stays reachable at any scroll depth: it says what the list is showing, and how.
 pub fn band_slide(tab: Tab) -> i32 {
-    match tab {
-        Tab::Playlists => {
-            let (_, y, _, h) = new_playlist_rect();
-            y + h - TABS_BOTTOM
-        }
-        _ => filter_top() - TABS_BOTTOM,
-    }
+    bar_top(tab) - TABS_BOTTOM
 }
 
 /// The offset actually used for drawing and hit-testing: the stored slide, clamped to `tab`'s slide
@@ -667,26 +651,49 @@ pub fn band_offset(tab: Tab, hide: i32, scroll_px: i32) -> i32 {
     hide.clamp(0, band_slide(tab)).min(scroll_px.max(0))
 }
 
-/// Is `(x, y)` on the filter strip? x is unused — the whole width is the target, because a 32px
-/// strip is already a small one and splitting it would make it smaller.
-pub fn filter_hit(tab: Tab, y: i32) -> bool {
-    filter_hit_at(tab, y, 0)
+/// The bar's three parts. Songs and Albums have all three; Artists and Playlists only `Rows`,
+/// which then takes the whole width.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BarCell {
+    /// SORT: a tap steps to the next order (Songs' `SORTS`, Albums' `ALBUM_SORTS`).
+    Sort,
+    /// FILTER: opens the Filter sheet — genres, Hi-Res and the saved views.
+    Filter,
+    /// The rows switch: a tap steps the tab to its next layout (`next_view`).
+    Rows,
 }
 
-/// [`filter_hit`] with the band slid `hide` px up — the strip rides up with it.
-pub fn filter_hit_at(tab: Tab, y: i32, hide: i32) -> bool {
-    let top = filter_top() - hide;
-    has_filter(tab) && y > TABS_BOTTOM && (top..top + FILTER_H).contains(&y)
+/// Where SORT ends and FILTER begins.
+pub const BAR_SORT_X1: i32 = 176;
+/// Where FILTER ends and the rows switch begins: a 72 px target, the icon centred in it.
+pub const BAR_ROWS_X0: i32 = 408;
+
+/// The bar's part under `(x, y)` on `tab`, with the band slid `hide` px up — the bar rides up
+/// with it. The whole height of the bar and every pixel of its width belong to some part, because
+/// a 44 px strip is already a small target and gaps would make it smaller.
+pub fn bar_cell_at(tab: Tab, x: i32, y: i32, hide: i32) -> Option<BarCell> {
+    let top = bar_top(tab) - hide;
+    if y <= TABS_BOTTOM || !(top..top + BAR_H).contains(&y) {
+        return None;
+    }
+    Some(if !has_filter(tab) || x >= BAR_ROWS_X0 {
+        BarCell::Rows
+    } else if x < BAR_SORT_X1 {
+        BarCell::Sort
+    } else {
+        BarCell::Filter
+    })
+}
+
+/// Is `(x, y)` on the bar's FILTER? [`bar_cell_at`] with the band in place.
+pub fn filter_hit(tab: Tab, x: i32, y: i32) -> bool {
+    bar_cell_at(tab, x, y, 0) == Some(BarCell::Filter)
 }
 
 pub fn list_top(tab: Tab) -> i32 {
-    let below = filter_top() + if has_filter(tab) { FILTER_H } else { 0 };
+    let below = bar_top(tab) + BAR_H;
     match tab {
         Tab::Albums => below + 4,
-        // Playlists carries the "NEW PLAYLIST" row between the band and the list. Adding it here
-        // rather than as a virtual row 0 keeps every index in this file meaning what it says: the
-        // A–Z rail, the selection cursor and `hit_row` all still index `lib.playlists` directly.
-        Tab::Playlists => below + 8 + NEW_PLAYLIST_H,
         _ => below + 8,
     }
 }
@@ -695,8 +702,11 @@ pub fn list_top(tab: Tab) -> i32 {
 /// row rather than a corner button. It slides away with the band ([`band_slide`]).
 pub const NEW_PLAYLIST_H: i32 = 62;
 
+/// Between the band and the bar. Adding it to `list_top` rather than as a virtual row 0 keeps
+/// every index in this file meaning what it says: the A–Z rail, the selection cursor and `hit_row`
+/// all still index `lib.playlists` directly.
 pub fn new_playlist_rect() -> (i32, i32, i32, i32) {
-    (0, filter_top() + 8, W as i32, NEW_PLAYLIST_H)
+    (0, bar_top_base() + 8, W as i32, NEW_PLAYLIST_H)
 }
 
 /// Is (`x`, `y`) on the New playlist row, with the band slid `hide` px up — the row rides up with it.
@@ -734,37 +744,71 @@ pub fn hit_new_at(tab: Tab, x: i32, y: i32, hide: i32) -> Option<NewKind> {
     )
 }
 
-/// The filter strip: what is filtering the list right now, and a way to change it.
-fn filter_strip(c: &mut Canvas, t: &Theme, f: &FontSet, lib: &Library, y: i32) {
-    let cy = y + FILTER_H / 2;
-    fill_rect(c, 0, y, W as i32, FILTER_H, t.panel);
+/// The view bar: how the list is ordered, what is filtering it, and how it is laid out — each a
+/// label over what it is now, and each a tap to change it.
+#[allow(clippy::too_many_arguments)]
+fn view_bar(
+    c: &mut Canvas,
+    t: &Theme,
+    f: &FontSet,
+    tab: Tab,
+    lib: &Library,
+    sort: usize,
+    album_sort: usize,
+    y: i32,
+) {
+    let cy = y + BAR_H / 2;
+    let ty = (cy + 4) as f32;
+    fill_rect(c, 0, y, W as i32, BAR_H, t.panel);
     let lst = sty(Family::Mono, Weight::Regular, 11.0, t.faint, 0.18);
-    text::draw(
+    let vst = |col| sty(Family::Mono, Weight::Regular, 12.0, col, 0.1);
+    let sep = |c: &mut Canvas, x: i32| fill_rect(c, x, y + 12, 1, BAR_H - 24, t.line);
+    if has_filter(tab) {
+        // SORT, then what it is.
+        let label = crate::i18n::text("SORT");
+        text::draw(c, f, 22.0, ty, label, &lst);
+        let x = 22.0 + text::measure(f, label, &lst) + 10.0;
+        let short = match tab {
+            Tab::Songs => crate::i18n::text(SORTS[sort.min(SORTS.len() - 1)]),
+            _ => crate::i18n::text(ALBUM_SORTS[album_sort_now(lib, album_sort)]),
+        };
+        let vs = vst(t.ink);
+        let short = crate::widgets::fit(f, &short.to_uppercase(), &vs, BAR_SORT_X1 as f32 - 12.0 - x);
+        text::draw(c, f, x, ty, &short, &vs);
+        sep(c, BAR_SORT_X1);
+        // FILTER, and its value, which carries the accent when something is actually filtering,
+        // so an active filter is visible at a glance rather than needing to be read.
+        let label = crate::i18n::text("FILTER");
+        let x0 = BAR_SORT_X1 as f32 + 16.0;
+        text::draw(c, f, x0, ty, label, &lst);
+        let on = lib.filtered();
+        let vs = vst(if on { t.acc } else { t.dim });
+        let value = lib
+            .filter_name()
+            .unwrap_or_else(|| crate::i18n::text("ALL").to_string());
+        let end = BAR_ROWS_X0 as f32 - 24.0;
+        let room = end - (x0 + text::measure(f, label, &lst) + 10.0);
+        let value = crate::widgets::fit(f, &value.to_uppercase(), &vs, room);
+        let w = text::measure(f, &value, &vs);
+        text::draw(c, f, end - w, ty, &value, &vs);
+        icons::chevron(c, end + 10.0, cy as f32, 9.0, t.faint);
+        sep(c, BAR_ROWS_X0);
+    } else {
+        // The bar is the rows switch alone: say which layout this is, across the width.
+        let label = crate::i18n::text("SHOW AS");
+        text::draw(c, f, 22.0, ty, label, &lst);
+        let x = 22.0 + text::measure(f, label, &lst) + 10.0;
+        let name = view_of(lib, tab).short().to_uppercase();
+        text::draw(c, f, x, ty, &name, &vst(t.ink));
+    }
+    view_icon(
         c,
-        f,
-        22.0,
-        (cy + 4) as f32,
-        crate::i18n::text("FILTER"),
-        &lst,
+        ((BAR_ROWS_X0 + W as i32) / 2) as f32,
+        cy as f32,
+        view_of(lib, tab),
+        t.dim,
     );
-    // The value carries the accent when something is actually filtering, so an active filter is
-    // visible at a glance rather than needing to be read.
-    let on = lib.filtered();
-    let vs = sty(
-        Family::Mono,
-        Weight::Regular,
-        12.0,
-        if on { t.acc } else { t.dim },
-        0.1,
-    );
-    let label = lib
-        .filter_name()
-        .unwrap_or_else(|| crate::i18n::text("ALL").to_string());
-    let label = crate::widgets::fit(f, &label.to_uppercase(), &vs, 300.0);
-    let w = text::measure(f, &label, &vs);
-    text::draw(c, f, 440.0 - w, (cy + 4) as f32, &label, &vs);
-    icons::chevron(c, 452.0, cy as f32, 9.0, t.faint);
-    hline(c, y + FILTER_H - 1, t.line);
+    hline(c, y + BAR_H - 1, t.line);
 }
 
 /// Fixed row height per tab (Albums rows are 60 but carry extra 30px artist headers —
@@ -1028,7 +1072,7 @@ pub fn album_display_order(lib: &Library, sort: usize) -> Vec<usize> {
     // and silently dropping those would make the filter look like it had eaten half the library.
     let mut order: Vec<usize> = (0..flat.len())
         .filter(|i| {
-            lib.filter_genre.is_none()
+            !lib.filtered()
                 || flat[*i].track_list.is_empty()
                 || flat[*i].track_list.iter().any(|t| lib.passes(t))
         })
@@ -1901,7 +1945,18 @@ pub(crate) fn tabs(
 /// `list_top - hide`, which is exactly where the rows' clip begins: the two regions never overlap,
 /// so draw order between them does not matter, and at `hide == 0` the screen is pixel-identical to
 /// how it was before any of this existed.
-fn band_block(c: &mut Canvas, t: &Theme, f: &FontSet, tab: Tab, lib: &Library, yt: i32, hide: i32) {
+#[allow(clippy::too_many_arguments)]
+fn band_block(
+    c: &mut Canvas,
+    t: &Theme,
+    f: &FontSet,
+    tab: Tab,
+    lib: &Library,
+    yt: i32,
+    hide: i32,
+    sort: usize,
+    album_sort: usize,
+) {
     c.set_clip_y(TABS_BOTTOM + 1, list_top(tab) - hide);
     let y = yt - hide;
     match tab {
@@ -1957,9 +2012,7 @@ fn band_block(c: &mut Canvas, t: &Theme, f: &FontSet, tab: Tab, lib: &Library, y
             new_playlist_row(c, t, f, hide);
         }
     }
-    if has_filter(tab) {
-        filter_strip(c, t, f, lib, filter_top() - hide);
-    }
+    view_bar(c, t, f, tab, lib, sort, album_sort, bar_top(tab) - hide);
     c.clear_clip();
 }
 
@@ -2197,43 +2250,17 @@ fn draw_empty_note(c: &mut Canvas, t: &Theme, f: &FontSet, top: i32, tab: Tab, l
 }
 
 /// The search button's tap zone in the Library header, drawn only when the `search` component is
-/// installed. Fixed, between the title and the SORT/ORDER chip (whose zone starts at x 300), so it
-/// is in the same place on every tab and at every UI scale.
-///
-/// 240..292 since the view button arrived beside it: at the largest text size the ORDER caption
-/// starts at x 293, and at 244..300 it was clipped to "ORDER · ARTI…" whenever search was installed.
+/// installed. Fixed, between the title and the count, so it is in the same place on every tab and
+/// at every UI scale.
 pub const SEARCH_X0: i32 = 240;
 pub const SEARCH_X1: i32 = 292;
 
-/// Does `tab` draw the SORT/ORDER chip? Songs and Albums; the other two show a count, which is a
-/// readout and not a control.
-pub fn has_sort_chip(tab: Tab) -> bool {
-    matches!(tab, Tab::Songs | Tab::Albums)
-}
-
-/// Top of the SORT/ORDER chip's target. ABOVE the status strip's bottom edge on purpose: the chip
-/// sits directly under the Menu and Shelf glyphs, and a finger aiming at it and landing a little
-/// high used to open one of them (reported 2026-09-30). The strip keeps everything above this —
-/// its glyphs are centred at y 22, so the Menu and Shelf targets still run 10 px past the bottom
-/// of what they draw — and on every other screen, and every other tab, it keeps its full height.
+/// Top of the search button's target. ABOVE the status strip's bottom edge on purpose: the button
+/// sits under the Menu end of the status strip, and a finger aiming at it and landing a little high
+/// used to open the Menu (reported 2026-09-30 for the chip that sat there then). The strip keeps
+/// everything above this — its glyphs are centred at y 22, so the Menu and Shelf targets still run
+/// 10 px past the bottom of what they draw.
 pub const SORT_HIT_TOP: i32 = 32;
-
-/// Is `(x, y)` on the SORT/ORDER chip's target? Everything right of the header controls, from
-/// [`SORT_HIT_TOP`] to the header rule. `chrome::header_chip` never starts the box left of that x.
-/// Checked by the navigator BEFORE the status strip, because it claims the strip's bottom edge.
-pub fn hit_sort_chip(tab: Tab, x: i32, y: i32, search: bool) -> bool {
-    let x1 = controls_x1(search);
-    has_sort_chip(tab) && (SORT_HIT_TOP..crate::chrome::HEADER_BOTTOM).contains(&y) && x >= x1
-}
-
-/// Where the header's controls end and the caption may begin.
-pub fn controls_x1(search: bool) -> i32 {
-    if search {
-        SEARCH_X1
-    } else {
-        view_button_x(false).1
-    }
-}
 
 pub fn hit_search(x: i32, y: i32) -> bool {
     (SORT_HIT_TOP..crate::chrome::HEADER_BOTTOM).contains(&y) && (SEARCH_X0..SEARCH_X1).contains(&x)
@@ -2258,38 +2285,24 @@ pub fn render(
     let scroll_px = scroll_px.clamp(0, max_scroll_px(tab, lib, album_sort, album_expanded));
     let hide = band_offset(tab, band_hide, scroll_px);
     c.fill(t.bg);
-    // Songs shows a tappable SORT chip; Albums an ORDER chip; the others show their count.
-    let short = match tab {
-        Tab::Songs => crate::i18n::text(SORTS[sort.min(SORTS.len() - 1)]),
-        Tab::Albums => crate::i18n::text(ALBUM_SORTS[album_sort_now(lib, album_sort)]),
-        _ => "",
-    };
-    let rc = match tab {
-        Tab::Songs => format!("SORT \u{00b7} {short}"),
-        Tab::Albums => format!("ORDER \u{00b7} {short}"),
-        _ => count_caption(tab, lib),
-    };
-    // The view button, and the search button right of it when search is installed. The title ends
-    // before the first and the caption starts after the last.
-    let (vx0, vx1) = view_button_x(search);
-    let x1 = controls_x1(search);
+    // The header says how much there is; how it is ordered, filtered and laid out is the view
+    // bar's, under the shuffle band.
+    let rc = count_caption(tab, lib);
     // Audiobooks have their own tab, BOOKS, in the strip below.
     let books = !lib.books.is_empty();
     let title = crate::i18n::text("Library");
-    // The title may come to 8 px short of the button's zone: its icon is centred in it, so that
-    // still leaves a 20 px gap to the drawn glyph.
-    let y0 = if has_sort_chip(tab) {
-        crate::chrome::header_chip(c, t, f, title, &rc, short, (vx0 + 8) as f32, x1 as f32)
+    let y0 = if search {
+        // The title ends before the search button and the caption starts after it.
+        crate::chrome::header_around(c, t, f, title, Some(&rc), SEARCH_X0 as f32, SEARCH_X1 as f32)
     } else {
-        crate::chrome::header_around(c, t, f, title, Some(&rc), (vx0 + 8) as f32, x1 as f32)
+        crate::chrome::header(c, t, f, title, Some(&rc))
     };
     if search {
         crate::icons::search(c, ((SEARCH_X0 + SEARCH_X1) / 2) as f32, 62.0, 24.0, t.dim);
     }
-    view_icon(c, ((vx0 + vx1) / 2) as f32, 62.0, view_of(lib, tab), t.dim);
     let yt = tabs(c, t, f, y0, Slot::Tab(tab), lib.folders_tab, books);
     let total = row_count(tab, lib);
-    band_block(c, t, f, tab, lib, yt, hide);
+    band_block(c, t, f, tab, lib, yt, hide, sort, album_sort);
 
     match tab {
         Tab::Songs => {
@@ -4974,8 +4987,8 @@ mod tests {
         );
     }
 
-    /// At every text size, with search installed or not, "Library" fits before the controls and
-    /// the caption is whole beside them.
+    /// At every text size, with search installed, "Library" fits before the button and the count
+    /// is whole after it.
     #[test]
     fn the_header_buttons_leave_the_title_and_the_caption_whole_at_every_size() {
         let _g = crate::text::scale_guard();
@@ -4990,23 +5003,19 @@ mod tests {
         );
         for idx in 0..crate::text::SCALE_STEPS.len() {
             crate::text::set_scale_idx(idx);
-            for search in [false, true] {
-                let (x0, _) = view_button_x(search);
-                let x1 = controls_x1(search);
-                let title_end = crate::chrome::header_title_end(&t, &f, "Library");
-                assert!(
-                    title_end <= (x0 + 8 - 16) as f32,
-                    "{}%: title ends at {title_end} (search {search})",
-                    crate::text::scale_pct()
-                );
-                let cap = text::measure(&f, "ORDER \u{00b7} ARTIST", &rs);
-                assert!(
-                    458.0 - cap >= x1 as f32,
-                    "{}%: caption starts at {} (search {search})",
-                    crate::text::scale_pct(),
-                    458.0 - cap
-                );
-            }
+            let title_end = crate::chrome::header_title_end(&t, &f, "Library");
+            assert!(
+                title_end <= (SEARCH_X0 - 8) as f32,
+                "{}%: title ends at {title_end}",
+                crate::text::scale_pct()
+            );
+            let cap = text::measure(&f, "12,345 TRACKS", &rs);
+            assert!(
+                458.0 - cap >= SEARCH_X1 as f32,
+                "{}%: caption starts at {}",
+                crate::text::scale_pct(),
+                458.0 - cap
+            );
         }
     }
 
@@ -5283,24 +5292,56 @@ pub const GENRE_HEAD_ROWS: usize = 2;
 pub const GENRE_ROW_HIRES: usize = 0;
 pub const GENRE_ROW_ALL: usize = 1;
 
-/// Total scrollable height: the two header rows plus one per genre.
+/// What a Filter sheet row is. After the two head rows come the saved views (handoff 5c, "open a
+/// view from the bar"), then the genres. A view and a genre are one choice — picking either clears
+/// the other — so they share the single-choice part of the sheet, the views first: there are few
+/// of them, and they are the ones someone made on purpose.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FilterRow {
+    HiRes,
+    All,
+    /// `lib.saved_views[i]`.
+    View(usize),
+    /// `lib.genres[i]`.
+    Genre(usize),
+}
+
+/// The sheet's row `r` as a [`FilterRow`]; `None` past the end.
+pub fn filter_row(lib: &Library, r: usize) -> Option<FilterRow> {
+    let views = lib.saved_views.len();
+    match r {
+        GENRE_ROW_HIRES => Some(FilterRow::HiRes),
+        GENRE_ROW_ALL => Some(FilterRow::All),
+        _ if r < GENRE_HEAD_ROWS + views => Some(FilterRow::View(r - GENRE_HEAD_ROWS)),
+        _ => {
+            let g = r - GENRE_HEAD_ROWS - views;
+            (g < lib.genres.len()).then_some(FilterRow::Genre(g))
+        }
+    }
+}
+
+/// How many rows the sheet has.
+fn filter_rows(lib: &Library) -> usize {
+    GENRE_HEAD_ROWS + lib.saved_views.len() + lib.genres.len()
+}
+
+/// Total scrollable height: the two header rows, then one per saved view and one per genre.
 pub fn genre_content_h(lib: &Library) -> i32 {
-    (lib.genres.len() + GENRE_HEAD_ROWS) as i32 * GENRE_RH()
+    filter_rows(lib) as i32 * GENRE_RH()
 }
 
 pub fn genre_max_scroll_px(lib: &Library) -> i32 {
     (genre_content_h(lib) - (LIST_BOTTOM - GENRE_TOP)).max(0)
 }
 
-/// Which picker row is under `y` at this scroll? `GENRE_ROW_HIRES` and `GENRE_ROW_ALL` are the two
-/// header rows; `Some(n)` beyond them is `lib.genres[n - GENRE_HEAD_ROWS]`. Shares its arithmetic
-/// with `genre_render`, so the two cannot disagree.
+/// Which picker row is under `y` at this scroll? Read it with [`filter_row`]. Shares its
+/// arithmetic with `genre_render`, so the two cannot disagree.
 pub fn genre_row_at(lib: &Library, y: i32, scroll_px: i32) -> Option<usize> {
     if !(GENRE_TOP..LIST_BOTTOM).contains(&y) {
         return None;
     }
     let r = ((y - GENRE_TOP + scroll_px.max(0)) / GENRE_RH()) as usize;
-    (r < lib.genres.len() + GENRE_HEAD_ROWS).then_some(r)
+    (r < filter_rows(lib)).then_some(r)
 }
 
 pub fn genre_render(
@@ -5319,26 +5360,41 @@ pub fn genre_render(
 
     // Only the visible window, like every other long list here — 95 rows is more than a screen.
     let first = ((scroll / GENRE_RH()).max(0)) as usize;
-    for r in first..lib.genres.len() + GENRE_HEAD_ROWS {
+    let last_view = GENRE_HEAD_ROWS + lib.saved_views.len();
+    for r in first..filter_rows(lib) {
         let y = GENRE_TOP + r as i32 * GENRE_RH() - scroll;
         if y >= LIST_BOTTOM {
             break;
         }
         // The Hi-Res row is a TOGGLE, so it shows its own on-state; the genre rows are a
         // single-choice list, so exactly one of them is lit.
-        let (name, count, on) = match r {
-            GENRE_ROW_HIRES => (
-                "Hi-Res only".to_string(),
+        let Some(kind) = filter_row(lib, r) else { break };
+        let (name, count, on) = match kind {
+            FilterRow::HiRes => (
+                crate::i18n::text("Hi-Res only").to_string(),
                 lib.hires_tracks,
                 lib.filter_hires,
             ),
-            GENRE_ROW_ALL => (
-                "All genres".to_string(),
+            FilterRow::All => (
+                crate::i18n::text("All genres").to_string(),
                 lib.songs.len() as u32,
-                lib.filter_genre.is_none(),
+                lib.filter_genre.is_none() && lib.filter_view.is_none(),
             ),
-            _ => {
-                let g = &lib.genres[r - GENRE_HEAD_ROWS];
+            FilterRow::View(i) => {
+                let v = &lib.saved_views[i];
+                let id = v.id();
+                // Its count is the smart playlist's, already worked out by `App::rebuild_smart`;
+                // matching every song against every view each frame would not be.
+                let n = lib
+                    .playlists
+                    .iter()
+                    .find(|p| p.smart && p.id == id)
+                    .map_or(0, |p| p.tracks);
+                let on = lib.filter_view.as_ref().is_some_and(|f| f.id() == id);
+                (v.name.clone(), n, on)
+            }
+            FilterRow::Genre(g) => {
+                let g = &lib.genres[g];
                 (g.name.clone(), g.tracks, lib.filter_genre == Some(g.id))
             }
         };
@@ -5362,12 +5418,19 @@ pub fn genre_render(
             crate::scale::ROW,
             if on { t.acc } else { t.ink },
         );
+        // A saved view leads with the diamond smart playlists carry in the Playlists tab.
+        let nx = if matches!(kind, FilterRow::View(_)) {
+            icons::diamond(c, 30.0, cy as f32, 16.0, t.acc);
+            46.0
+        } else {
+            22.0
+        };
         text::draw(
             c,
             f,
-            22.0,
+            nx,
             (cy + 5) as f32,
-            &crate::widgets::fit(f, &name, &ns, 320.0),
+            &crate::widgets::fit(f, &name, &ns, 342.0 - nx),
             &ns,
         );
         let cs = sty(Family::Mono, Weight::Regular, 12.0, t.faint, 0.06);
@@ -5379,7 +5442,12 @@ pub fn genre_render(
         hline(
             c,
             y + GENRE_RH(),
-            if r == GENRE_ROW_HIRES { t.dim } else { t.line },
+            // The saved views end with the same heavier rule: the genres are another list.
+            if r == GENRE_ROW_HIRES || (r + 1 == last_view && r >= GENRE_HEAD_ROWS) {
+                t.dim
+            } else {
+                t.line
+            },
         );
     }
     c.clear_clip();

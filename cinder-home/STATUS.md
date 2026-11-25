@@ -955,8 +955,9 @@ backend/hardware leg isn't wired yet. **▢ Stationary** = renders but is a plac
   (2026-10-04, redesign R4): **HOST-TESTED ONLY — not yet run on a device**
   (`docs/DEVICE_CHECKLIST.md` §25). Ratings and plays live in `/contents/cinder_stats.tsv`, saved
   views in `/contents/cinder_views.conf` (`docs/TRACK_DATA.md`); nothing is written to Sony's
-  database. Saved views appear as smart playlists; their *show as* and *pin* wait for the Library
-  view bar (R3).
+  database. Saved views appear as smart playlists, and as choices in the Library view bar's Filter
+  sheet (2026-11-25, host-tested); *show as* and *pin* are not built (`PLAN_redesign_2026-09.md`
+  Part G).
 - **Playlists** (2026-07-26): the Playlists tab lists the device's real playlists with their track
   counts, and tapping one **plays it from the top in saved order**. Sony has no playlist table —
   playlists are containers in a second object tree, with membership rows pointing at tracks by

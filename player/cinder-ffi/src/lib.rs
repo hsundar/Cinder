@@ -2722,6 +2722,9 @@ fn build_library_with(
         hires_tracks,
         filter_genre: None,
         filter_hires: false,
+        filter_view: None,
+        filter_now: 0,
+        saved_views: Vec::new(),
         // The App's preference, applied by `set_library` (which also re-sorts the artists).
         ignore_the: false,
         ranks: Default::default(),
