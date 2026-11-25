@@ -560,24 +560,37 @@ fn pivot_render(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying, l: &Lay
         );
         c.clear_clip_x();
         let x = left as i32;
+        // The meters and the record take the block's whole width; the cover keeps its square.
+        let mut wide = false;
         if np::page_from_index(np.page) == NpPage::Cover {
             // The cover, or the moving picture chosen instead (or standing in for a missing cover).
+            // The tape is not here: it takes the whole panel, on its side (`np_picture::tape_land`).
+            use crate::np_picture::{self as pic, NpPicture};
             match np.picture.shown(np.art_full.is_some()) {
-                crate::np_picture::NpPicture::Cover => {
+                NpPicture::Meters => {
+                    wide = true;
+                    pic::meters_wide(c, t, f, np, 14, crate::canvas::W as i32 - 14, art_y, art);
+                }
+                NpPicture::Record => {
+                    wide = true;
+                    pic::record(c, t, np, crate::canvas::W as f32 / 2.0, (art_y + art / 2) as f32, 172.0);
+                }
+                _ => {
                     cover(c, t, np, x, art_y, art);
                     cover_viz(c, t, np, x + 12, art - 24, art_y + art - 8);
                 }
-                p => crate::np_picture::draw(c, t, f, np, p, x, art_y, art),
             }
         } else {
             audio_page(c, t, f, np, (x, art_y, art, art));
         }
-        // The page dots stand in the room right of the cover, from its foot up.
+        // The page dots stand in the room right of the cover, from its foot up; at the panel's edge
+        // beside a picture that takes the width.
+        let dots_x = if wide { crate::canvas::W as i32 - 8 } else { x + art + 14 };
         for i in 0..np::PAGES as i32 {
             let on = i == (np.page % np::PAGES) as i32;
             fill_rect(
                 c,
-                x + art + 14,
+                dots_x,
                 art_y + art - 12 - i * 12,
                 2,
                 if on { 10 } else { 4 },

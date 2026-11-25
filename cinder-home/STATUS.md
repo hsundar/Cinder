@@ -17,8 +17,10 @@
 >   geometry, so the hit tests are untouched; the overflow test walks every screen in Pivot.
 > - **Pivot Now Playing picture**: `np_picture.rs` (`NpPicture` Cover · Meters · Record · Tape,
 >   saved as `np_picture=`, Settings row `ROW_NP_PICTURE`, Pivot only). Meters read the PCM tap's
->   RMS (`Signal::meter`, 0 VU = −18 dBFS), else the band mean; Record and Tape turn on `viz_seed`
->   via `App::np_picture_shown` in the shell's reel clock. The line under the title is
+>   RMS (`Signal::meter`, 0 VU = −18 dBFS), else the band mean, on a backlit face across the
+>   block; Record and Tape turn on `viz_seed` via `App::np_picture_shown` in the shell's reel
+>   clock. Tape is `np_picture::tape_land`, the whole panel on its side: `App::on_tape` gives it
+>   the Cassette tape's landscape rules (`tape::tap_at`, no status bar, swipe or drag). The line under the title is
 >   `NowPlaying::album` and `place`, injected by `nav`. Checklist 52.18.
 > - **Misaligned embedded covers**: `art_load::embedded_window` moves the scanner's
 >   (`dataoffset`, `datasize`) back to the last JPEG/PNG signature within 64 bytes when the bytes at

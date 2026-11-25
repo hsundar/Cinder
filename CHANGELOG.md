@@ -33,9 +33,12 @@ level the commit history supports; from `v0.1.6` onward, entries are written as 
 
 - **Pivot Now Playing: the album, and a picture to choose.** Under the title, the album and the
   song's place in what is playing ("3 / 12") replace the format, which the status bar already
-  shows. Settings ▸ Now Playing ▸ Picture puts analog VU meters, a turning record (the cover as
-  its label, the tonearm moving in as the song plays) or a winding cassette in the cover's place;
-  with Cover chosen, a song without a cover gets the record. *Device-unverified.*
+  shows. Settings ▸ Now Playing ▸ Picture puts something else in the cover's place: two analog
+  VU meters across the width, warm-backlit like an amplifier's; a large record turning, the cover
+  as its label; or a cassette that takes the whole screen on its side, the title, artist and
+  album on its label and its reels turning, with the controls left to the player's buttons (taps
+  on the tape: left third ◁, middle ▶/‖, right third ▷, top corner Menu). With Cover chosen, a
+  song without a cover gets the record. *Device-unverified.*
 
 - **Podcast covers on MP3 episodes.** Sony's scanner misreads the cover frame of an ID3v2.4
   file whose description is marked UTF-8 and records the picture 15 or 20 bytes past its start,

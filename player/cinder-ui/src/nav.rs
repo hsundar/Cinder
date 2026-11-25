@@ -3480,7 +3480,7 @@ impl App {
     /// Now Playing is a full-panel view (a Winamp skin, or a cassette tape on its side): the
     /// panel's edges and the status strip belong to the view, which has no status bar of its own.
     pub fn landscape(&self) -> bool {
-        self.current() == Screen::NowPlaying && (self.winamp_view() || self.tape_view())
+        self.current() == Screen::NowPlaying && (self.winamp_view() || self.on_tape())
     }
 
     /// The pull travelled far enough: open the panel. False if something modal came up meanwhile.
@@ -5676,7 +5676,7 @@ impl App {
                 vec![]
             }
             Screen::NowPlaying if self.winamp_view() => self.winamp_tap(x, y),
-            Screen::NowPlaying if self.tape_view() => {
+            Screen::NowPlaying if self.on_tape() => {
                 use crate::tape::Tap;
                 let (lx, ly) = crate::tape::to_land(x, y);
                 match crate::tape::tap_at(lx, ly) {
@@ -9029,7 +9029,9 @@ impl App {
     /// Pivot's Now Playing is on the glass, on its cover page, with `has_cover` saying whether the
     /// song has one: the picture drawn there, else None.
     pub fn np_picture_shown(&self, has_cover: bool) -> Option<crate::np_picture::NpPicture> {
-        (self.pivot() && self.is_now_playing() && self.np_page == 0).then(|| self.np_picture.shown(has_cover))
+        // The tape is the whole panel whatever the page; the others are on the cover page.
+        let on = self.pivot() && self.is_now_playing();
+        (on && (self.np_page == 0 || self.pivot_tape())).then(|| self.np_picture.shown(has_cover))
     }
 
     fn menu_max_scroll(&self) -> i32 {
@@ -9560,6 +9562,18 @@ impl App {
         self.tape_loaded && self.style == crate::style::Style::Cassette
     }
 
+    /// Pivot with Settings ▸ Now Playing ▸ Picture on Tape: the drawn cassette, on its side, the
+    /// whole panel (`np_picture::tape_land`).
+    pub fn pivot_tape(&self) -> bool {
+        self.pivot() && self.np_picture == crate::np_picture::NpPicture::Tape
+    }
+
+    /// Now Playing is a tape on its side: a Cassette style tape, or Pivot's. Touch is the tape's
+    /// (`tape::tap_at`), there is no status bar, and a swipe or a drag means nothing.
+    fn on_tape(&self) -> bool {
+        self.tape_view() || self.pivot_tape()
+    }
+
     /// The skin's display choices, for the settings file (`wa=`): remaining time, the visualiser
     /// (spectrum, oscilloscope, off) and the analyzer's look.
     pub fn winamp_prefs(&self) -> String {
@@ -9686,7 +9700,7 @@ impl App {
         }
         match self.current() {
             // A tape has nothing to drag.
-            Screen::NowPlaying if self.tape_view() => false,
+            Screen::NowPlaying if self.on_tape() => false,
             Screen::NowPlaying if self.winamp_view() => {
                 use crate::winamp::{self, Ctl};
                 let (lx, ly) = winamp::to_land(x, y);
@@ -10610,7 +10624,7 @@ impl App {
                 vec![]
             }
             // Turned on its side, a swipe means nothing the window has: Winamp has no gestures.
-            Screen::NowPlaying if self.tape_view() => vec![],
+            Screen::NowPlaying if self.on_tape() => vec![],
             // A swipe on the playlist pages through the queue, a page a swipe, like turning a page:
             // leftward is the next one. Anywhere else it means nothing.
             Screen::NowPlaying if self.winamp_view() => {
@@ -12398,7 +12412,9 @@ impl App {
                     picture: self.np_picture,
                     ..*np
                 };
-                if let (true, Some(tape)) = (self.tape_view(), np2.tape) {
+                if self.pivot_tape() {
+                    crate::np_picture::tape_land(c, &theme, fonts, &np2);
+                } else if let (true, Some(tape)) = (self.tape_view(), np2.tape) {
                     let row = self.context.get(self.context_idx);
                     let year = row.map_or(0, |r| r.year);
                     let track = row.map_or(0, |r| r.track);
@@ -23966,6 +23982,44 @@ mod tests {
         let (x, y) = at(10, 240);
         assert_eq!(a.tap(x, y), vec![Action::Prev]);
         assert!(!a.shelf_swipe_open(), "no Shelf on its side");
+    }
+
+    /// Pivot with the Tape picture: the drawn cassette on its side is the whole panel, touched as a
+    /// tape is (◁ ▶/‖ ▷ by thirds, the Menu at the corner), with no status strip, drag or swipe.
+    #[test]
+    fn pivots_tape_picture_takes_the_panel_on_its_side() {
+        let mut a = unlocked();
+        a.set_style(crate::style::Style::Pivot);
+        a.go(Screen::NowPlaying);
+        assert!(!a.landscape(), "the cover: upright, with its controls");
+        a.set_np_picture(crate::np_picture::NpPicture::Tape);
+        assert!(a.pivot_tape() && a.landscape());
+        assert_eq!(a.np_picture_shown(true), Some(crate::np_picture::NpPicture::Tape));
+        a.np_page = 1;
+        assert!(a.np_picture_shown(true).is_some(), "the tape turns whatever page was last open");
+        let at = |lx: i32, ly: i32| (479 - ly, lx);
+        let (x, y) = at(100, 300);
+        assert_eq!(a.tap(x, y), vec![Action::Prev]);
+        let (x, y) = at(700, 300);
+        assert_eq!(a.tap(x, y), vec![Action::Next]);
+        let (x, y) = at(400, 300);
+        assert_eq!(a.tap(x, y), vec![Action::PlayPause]);
+        assert!(!a.scrub_begin(x, y), "nothing to drag on a tape");
+        assert_eq!(a.swipe(-1, x, y), vec![]);
+        let (x, y) = at(10, 240);
+        assert_eq!(a.tap(x, y), vec![Action::Prev], "no status strip on its side");
+        let (x, y) = at(790, 20);
+        a.tap(x, y);
+        assert_eq!(a.current(), Screen::Menu, "the corner opens the Menu, the way out");
+        // It draws: the panel is the tape, not Now Playing's controls.
+        let fonts = crate::text::FontSet::load();
+        a.go(Screen::NowPlaying);
+        let mut c = Canvas::new();
+        a.render(&mut c, &fonts, &bare_np());
+        assert_eq!(c.buf[400 * crate::canvas::W + 2], crate::canvas::to_u32(embedded_graphics::pixelcolor::Rgb888::new(12, 12, 14)), "the deck round the tape");
+        // Another style keeps its own Now Playing whatever Pivot's picture is.
+        a.set_style(crate::style::Style::Cinder);
+        assert!(!a.landscape() && !a.pivot_tape());
     }
 
     #[test]

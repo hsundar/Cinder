@@ -1,10 +1,11 @@
-//! What Pivot's Now Playing shows in its picture square: the cover, or one of three moving
-//! pictures (Settings ▸ Now Playing ▸ Picture): a pair of analog VU meters, a record turning on a
-//! platter, or a cassette winding. The Cover choice falls back to the record when a song has no
-//! cover, which is where a moving picture earns its place most.
+//! What Pivot's Now Playing shows in its picture block: the cover, or one of three moving pictures
+//! (Settings ▸ Now Playing ▸ Picture): a pair of backlit analog VU meters across the block's width,
+//! a record turning, or a cassette that takes the whole panel on its side, the controls left to
+//! the player's buttons and the tape's own taps. The Cover choice falls back to the record when a
+//! song has no cover, which is where a moving picture earns its place most.
 //!
-//! Everything is drawn from the theme's colours in Pivot's thin-line way, and every one fits a
-//! `size` square at (`x`, `y`), so the layout around it never changes with the choice. Motion
+//! The meters and the record sit in the block above the title, so the layout around them never
+//! changes with the choice. Motion
 //! comes from `NowPlaying::viz_seed`, which the shell advances in real time while the song plays
 //! (`App::np_picture_turns`); the meters read the PCM tap's levels (`App::np_picture_meters`).
 
@@ -111,16 +112,6 @@ fn mix(a: Rgb888, b: Rgb888, t: f32) -> Rgb888 {
     Rgb888::new(m(a.r(), b.r()), m(a.g(), b.g()), m(a.b(), b.b()))
 }
 
-/// Draw `p` for `np` in the `size` square at (`x`, `y`).
-pub fn draw(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying, p: NpPicture, x: i32, y: i32, size: i32) {
-    match p {
-        NpPicture::Cover => {}
-        NpPicture::Meters => meters(c, t, f, np, x, y, size),
-        NpPicture::Record => record(c, t, np, x, y, size),
-        NpPicture::Tape => tape(c, t, f, np, x, y, size),
-    }
-}
-
 // ── VU meters ────────────────────────────────────────────────────────────────────────────────
 
 /// The scale's marks, in VU.
@@ -151,45 +142,74 @@ pub fn vu_levels(np: &NowPlaying) -> (f32, f32) {
     (-30.0, -30.0)
 }
 
-fn meters(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying, x: i32, y: i32, size: i32) {
+/// `col` at the theme's night dimming, as the covers are.
+fn lit(t: &Theme, col: Rgb888) -> Rgb888 {
+    let d = t.dim_pct.min(100);
+    let k = |v: u8| (v as u32 * d / 100) as u8;
+    Rgb888::new(k(col.r()), k(col.g()), k(col.b()))
+}
+
+/// The meters across the block's full width (`x0`..`x1`), stacked, in `y`..`y + h`.
+pub fn meters_wide(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying, x0: i32, x1: i32, y: i32, h: i32) {
     let (l, r) = if np.playing { vu_levels(np) } else { (-30.0, -30.0) };
     let gap = 12;
-    let h = (size - gap) / 2;
+    let mh = (h - gap) / 2;
     for (k, (level, name)) in [(l, "L"), (r, "R")].into_iter().enumerate() {
-        meter(c, t, f, x, y + k as i32 * (h + gap), size, h, level, name);
+        meter(c, t, f, x0, y + k as i32 * (mh + gap), x1 - x0, mh, level, name);
+    }
+}
+
+/// A warm backlit face: brightest low in the middle, where the lamp sits, falling to amber at the
+/// edges. Written straight into the buffer (a meter is ~70k pixels, twice a frame).
+fn backlight(c: &mut Canvas, t: &Theme, x: i32, y: i32, w: i32, h: i32) {
+    let glow = lit(t, Rgb888::new(255, 214, 140));
+    let edge = lit(t, Rgb888::new(196, 116, 38));
+    let (cx, cy) = (x as f32 + w as f32 / 2.0, y as f32 + h as f32 * 0.9);
+    let cw = crate::canvas::W;
+    for py in y.max(0)..(y + h).min(crate::canvas::H as i32) {
+        let ny = (py as f32 - cy) / h as f32;
+        for px in x.max(0)..(x + w).min(cw as i32) {
+            let nx = (px as f32 - cx) / (w as f32 / 2.0);
+            let k = (1.0 - 0.55 * nx * nx - 0.9 * ny * ny).clamp(0.0, 1.0);
+            c.buf[py as usize * cw + px as usize] = crate::canvas::to_u32(mix(edge, glow, k));
+        }
     }
 }
 
 #[allow(clippy::too_many_arguments)]
 fn meter(c: &mut Canvas, t: &Theme, f: &FontSet, x: i32, y: i32, w: i32, h: i32, vu: f32, name: &str) {
-    // The face: a slightly warm panel, as the backlit meters were.
-    fill_rect(c, x, y, w, h, mix(t.bg, t.panel, 0.9));
-    stroke_rect(c, x, y, w, h, t.line, 1);
+    // The bezel, then the lit face inside it.
+    fill_rect(c, x, y, w, h, lit(t, Rgb888::new(28, 22, 16)));
+    let b = 5;
+    backlight(c, t, x + b, y + b, w - 2 * b, h - 2 * b);
+    let ink = lit(t, Rgb888::new(58, 34, 14));
+    let red = lit(t, Rgb888::new(176, 38, 24));
+    let needle = lit(t, Rgb888::new(26, 18, 10));
     // The needle pivots below the face, so only the top of its swing shows.
-    let (cx, cy) = (x as f32 + w as f32 / 2.0, y as f32 + h as f32 * 1.22);
-    let rad = h as f32 * 0.98;
+    let (cx, cy) = (x as f32 + w as f32 / 2.0, y as f32 + h as f32 * 1.25);
+    let rad = h as f32 * 1.0;
     let angle = |p: f32| PI / 2.0 + VU_SWEEP - 2.0 * VU_SWEEP * p;
     // The scale: the arc, the red zone from 0 to +3, and a tick per mark with its number.
-    arc(c, cx, cy, rad, angle(1.0), angle(0.0), t.dim, 1);
-    arc(c, cx, cy, rad + 3.0, angle(1.0), angle(vu_pos(0.0)), t.acc, 4);
-    let nums = st(11.0, Weight::Regular, t.dim);
+    arc(c, cx, cy, rad, angle(1.0), angle(0.0), ink, 2);
+    arc(c, cx, cy, rad + 4.0, angle(1.0), angle(vu_pos(0.0)), red, 6);
+    let nums = st(13.0, Weight::Regular, ink);
     for m in VU_MARKS {
         let a = angle(vu_pos(m));
         let major = m == -20.0 || m == -10.0 || m == 0.0 || m == 3.0 || m == -5.0;
-        let len = if major { 10.0 } else { 6.0 };
-        let col = if m > 0.0 { t.acc } else { t.dim };
-        line(c, (cx + rad * a.cos(), cy - rad * a.sin()), (cx + (rad + len) * a.cos(), cy - (rad + len) * a.sin()), col, if major { 2 } else { 1 });
+        let len = if major { 12.0 } else { 7.0 };
+        let col = if m > 0.0 { red } else { ink };
+        line(c, (cx + rad * a.cos(), cy - rad * a.sin()), (cx + (rad + len) * a.cos(), cy - (rad + len) * a.sin()), col, 2);
         let label = if m > 0.0 { format!("+{}", m as i32) } else { format!("{}", m as i32) };
-        let (lx, ly) = (cx + (rad + 22.0) * a.cos(), cy - (rad + 22.0) * a.sin());
-        widgets::center(c, f, lx, ly + 4.0, &label, &TextStyle { color: col, ..nums });
+        let (lx, ly) = (cx + (rad + 26.0) * a.cos(), cy - (rad + 26.0) * a.sin());
+        widgets::center(c, f, lx, ly + 5.0, &label, &TextStyle { color: col, ..nums });
     }
     // The channel at the bottom left, "VU" at the bottom right: clear of the needle's swing.
-    text::draw(c, f, x as f32 + 10.0, (y + h - 10) as f32, name, &st(13.0, Weight::Regular, t.dim));
-    widgets::right(c, f, (x + w - 10) as f32, (y + h - 10) as f32, "VU", &st(15.0, Weight::Regular, t.ink));
+    text::draw(c, f, (x + b + 12) as f32, (y + h - b - 10) as f32, name, &st(15.0, Weight::Regular, ink));
+    widgets::right(c, f, (x + w - b - 12) as f32, (y + h - b - 10) as f32, "VU", &st(18.0, Weight::SemiBold, ink));
     // The needle, from inside the face up past the scale; clipped to the face.
     let a = angle(vu_pos(vu));
-    c.set_clip_y(y + 1, y + h - 1);
-    line(c, (cx + rad * 0.42 * a.cos(), cy - rad * 0.42 * a.sin()), (cx + (rad + 8.0) * a.cos(), cy - (rad + 8.0) * a.sin()), t.ink, 2);
+    c.set_clip_y(y + b, y + h - b);
+    line(c, (cx + rad * 0.45 * a.cos(), cy - rad * 0.45 * a.sin()), (cx + (rad + 10.0) * a.cos(), cy - (rad + 10.0) * a.sin()), needle, 2);
     c.clear_clip();
 }
 
@@ -201,9 +221,9 @@ fn spin(np: &NowPlaying) -> f32 {
     if np.playing { np.viz_seed } else { 0.0 }
 }
 
-fn record(c: &mut Canvas, t: &Theme, np: &NowPlaying, x: i32, y: i32, size: i32) {
-    let (cx, cy) = (x as f32 + size as f32 / 2.0, y as f32 + size as f32 / 2.0);
-    let r = size as f32 / 2.0 - 4.0;
+/// The record, radius `r` about (`cx`, `cy`): the disc and its grooves, a sheen that stays where
+/// the light is, and the label turning (the cover, or the accent with a mark).
+pub fn record(c: &mut Canvas, t: &Theme, np: &NowPlaying, cx: f32, cy: f32, r: f32) {
     // Vinyl is black in either theme; the grooves a shade off it.
     let vinyl = Rgb888::new(22, 22, 24);
     let groove = Rgb888::new(44, 44, 48);
@@ -214,13 +234,11 @@ fn record(c: &mut Canvas, t: &Theme, np: &NowPlaying, x: i32, y: i32, size: i32)
         ring(c, cx, cy, g, groove, 1);
         g += if ((g as i32) / 23) % 3 == 0 { 7.0 } else { 3.0 }; // track gaps, wider
     }
-    // The sheen stays where the light is while the record turns under it.
     for (a0, a1) in [(0.6f32, 0.95f32), (0.6 + PI, 0.95 + PI)] {
         for k in 0..6 {
             arc(c, cx, cy, label + 16.0 + k as f32 * (r - label - 24.0) / 6.0, a0, a1, Rgb888::new(70, 70, 76), 1);
         }
     }
-    // The label: the cover, turning; or the accent with a mark that shows it turning.
     let turn = spin(np);
     match np.art_full.or(np.art_thumb) {
         Some(img) => label_image(c, img, cx, cy, label, turn),
@@ -231,25 +249,6 @@ fn record(c: &mut Canvas, t: &Theme, np: &NowPlaying, x: i32, y: i32, size: i32)
         }
     }
     widgets::disc(c, cx as i32, cy as i32, 8, t.bg);
-    // The tonearm: from its pivot at the top right, the stylus on the groove the song has reached
-    // (the outer edge at the start, the run-out at the end).
-    let (px, py) = (x as f32 + size as f32 - 10.0, y as f32 + 18.0);
-    let d = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
-    let arm = d * 0.92;
-    let p = np.progress.clamp(0.0, 1.0);
-    let rs = (r - 10.0) + (label + 14.0 - (r - 10.0)) * p;
-    // The stylus is where a circle of radius `rs` about the centre meets one of `arm` about the
-    // pivot: the meeting on the near side, below and left of the pivot.
-    let a = (arm * arm - rs * rs + d * d) / (2.0 * d);
-    let hh = (arm * arm - a * a).max(0.0).sqrt();
-    let (ux, uy) = ((cx - px) / d, (cy - py) / d);
-    let (mx, my) = (px + a * ux, py + a * uy);
-    let stylus = (mx + hh * uy, my - hh * ux);
-    let arm_col = mix(t.dim, t.ink, 0.4);
-    line(c, (px, py), stylus, arm_col, 3);
-    widgets::disc(c, stylus.0 as i32, stylus.1 as i32, 9, arm_col);
-    widgets::disc(c, px as i32, py as i32, 18, t.line);
-    widgets::disc(c, px as i32, py as i32, 8, arm_col);
 }
 
 /// `img` as a round label of radius `r` at (`cx`, `cy`), turned by `turn` radians: the centre
@@ -280,54 +279,112 @@ fn label_image(c: &mut Canvas, img: &crate::art::Image, cx: f32, cy: f32, r: f32
     }
 }
 
-// ── Tape ─────────────────────────────────────────────────────────────────────────────────────
+// ── Tape: the whole panel, on its side ───────────────────────────────────────────────────────
+//
+// The player turned sideways is a cassette: 800 × 480, near enough a real one's 1.6:1. Drawn in
+// the tape's landscape pixels (`crate::tape::LW` × `LH`, the player's top on the left, as the
+// Cassette style's tapes are) and mapped to the panel by `land_*`. Nothing on it is a control: a
+// tap is the tape's own (`tape::tap_at`: ◁ ▶/‖ ▷ by thirds, the Menu at the top right).
 
-fn tape(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying, x: i32, y: i32, size: i32) {
-    let w = size;
-    let h = (size as f32 * 0.64) as i32;
-    let (bx, by) = (x, y + (size - h) / 2);
-    let k = |v: f32| (v * w as f32) as i32; // proportions of the shell's width
-    fill_rect(c, bx, by, w, h, t.panel);
-    stroke_rect(c, bx, by, w, h, t.line, 1);
-    // The label: an accent stripe, the title and the album.
-    let (lx, ly, lw, lh) = (bx + k(0.05), by + k(0.04), w - 2 * k(0.05), k(0.2));
-    fill_rect(c, lx, ly, lw, lh, t.bg);
-    stroke_rect(c, lx, ly, lw, lh, t.line, 1);
-    fill_rect(c, lx, ly + 6, lw, 2, t.acc);
-    let tw = (lw - 20) as f32;
-    let title = st(17.0, Weight::Regular, t.ink);
-    text::draw(c, f, (lx + 10) as f32, (ly + 32) as f32, &widgets::fit(f, np.title, &title, tw), &title);
-    let sub = st(12.0, Weight::Regular, t.dim);
-    let under = if np.album.is_empty() { np.artist } else { np.album };
-    text::draw(c, f, (lx + 10) as f32, (ly + 50) as f32, &widgets::fit(f, under, &sub, tw), &sub);
-    // The window, the tape between its rollers, and the two packs: all on the left at the start
-    // of the song, all on the right at its end. The spokes turn while it plays.
-    let (wx, wy, ww, wh) = (bx + k(0.17), ly + lh + k(0.04), w - 2 * k(0.17), k(0.24));
-    fill_rect(c, wx, wy, ww, wh, t.bg);
-    stroke_rect(c, wx, wy, ww, wh, t.line, 1);
-    let p = np.progress.clamp(0.0, 1.0);
-    let (rmin, rmax) = (wh as f32 * 0.2, wh as f32 * 0.44);
-    let cy = (wy + wh / 2) as f32;
-    let ty = wy + wh - 5;
-    fill_rect(c, wx + 8, ty, ww - 16, 1, t.dim);
-    let turn = spin(np) * 2.0;
-    for (cx, packed) in [(wx as f32 + ww as f32 * 0.24, 1.0 - p), (wx as f32 + ww as f32 * 0.76, p)] {
-        let r = rmin + (rmax - rmin) * packed;
-        widgets::disc(c, cx as i32, cy as i32, (2.0 * r) as u32, t.dim);
-        widgets::disc(c, cx as i32, cy as i32, (2.0 * rmin) as u32 - 2, t.panel);
-        widgets::disc(c, cx as i32, cy as i32, (rmin * 0.8) as u32, t.bg);
-        for s in 0..6 {
-            let a = turn + s as f32 * PI / 3.0;
-            let (sx, sy) = (cx + rmin * 0.62 * a.cos(), cy + rmin * 0.62 * a.sin());
-            widgets::disc(c, sx.round() as i32, sy.round() as i32, 4, t.faint);
+/// A landscape rectangle, filled on the panel.
+fn land_rect(c: &mut Canvas, u: i32, v: i32, w: i32, h: i32, col: Rgb888) {
+    fill_rect(c, crate::canvas::W as i32 - v - h, u, h, w, col);
+}
+
+fn land_stroke(c: &mut Canvas, u: i32, v: i32, w: i32, h: i32, col: Rgb888, t: u32) {
+    stroke_rect(c, crate::canvas::W as i32 - v - h, u, h, w, col, t);
+}
+
+fn land_disc(c: &mut Canvas, u: f32, v: f32, d: u32, col: Rgb888) {
+    widgets::disc(c, (crate::canvas::W as f32 - 1.0 - v).round() as i32, u.round() as i32, d, col);
+}
+
+fn land_ring(c: &mut Canvas, u: f32, v: f32, r: f32, col: Rgb888, w: u32) {
+    ring(c, crate::canvas::W as f32 - 1.0 - v, u, r, col, w);
+}
+
+fn land_text(c: &mut Canvas, f: &FontSet, u: f32, base: f32, s: &str, st: &TextStyle, max_w: f32) {
+    text::draw_land(c, f, (u, base), &widgets::fit(f, s, st, max_w), st, max_w);
+}
+
+/// The cassette, filling the panel.
+pub fn tape_land(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying) {
+    let (lw, lh) = (crate::tape::LW, crate::tape::LH);
+    let deck = lit(t, Rgb888::new(12, 12, 14));
+    let shell = lit(t, Rgb888::new(38, 38, 44));
+    let edge = lit(t, Rgb888::new(64, 64, 72));
+    let paper = lit(t, Rgb888::new(236, 228, 208));
+    let ink = lit(t, Rgb888::new(34, 30, 26));
+    let soft = lit(t, Rgb888::new(110, 100, 88));
+    let tape_col = lit(t, Rgb888::new(70, 46, 30));
+    let stripe = lit(t, t.acc);
+    c.fill(deck);
+    // The shell, its screws.
+    land_rect(c, 10, 10, lw - 20, lh - 20, shell);
+    land_stroke(c, 10, 10, lw - 20, lh - 20, edge, 2);
+    for (u, v) in [(38, 38), (lw - 38, 38), (38, lh - 38), (lw - 38, lh - 38), (lw / 2, lh - 26)] {
+        land_disc(c, u as f32, v as f32, 16, edge);
+        land_disc(c, u as f32, v as f32, 6, shell);
+    }
+    // The label: a big A, the song, a stripe, the time.
+    let (lu, lv, luw, lvh) = (64, 34, lw - 128, 268);
+    land_rect(c, lu, lv, luw, lvh, paper);
+    land_rect(c, lu, lv + 186, luw, 14, stripe);
+    land_rect(c, lu, lv + 204, luw, 5, mix(stripe, paper, 0.45));
+    land_stroke(c, lu + 14, lv + 14, 58, 58, ink, 2);
+    let big = |size: f32, w: Weight, col: Rgb888| widgets::sty(Family::Legible, w, size, col, 0.0);
+    text::draw_land(c, f, ((lu + 30) as f32, (lv + 58) as f32), "A", &big(36.0, Weight::SemiBold, ink), 40.0);
+    let tx = (lu + 92) as f32;
+    let tw = (luw - 92 - 24) as f32;
+    let quiet = np.title.is_empty() && np.artist.is_empty();
+    if quiet {
+        land_text(c, f, tx, (lv + 56) as f32, crate::i18n::text("No tape"), &big(32.0, Weight::Regular, soft), tw);
+    } else {
+        land_text(c, f, tx, (lv + 52) as f32, np.title, &big(32.0, Weight::Regular, ink), tw);
+        land_text(c, f, tx, (lv + 92) as f32, np.artist, &big(24.0, Weight::Regular, ink), tw);
+        if !np.album.is_empty() {
+            land_text(c, f, tx, (lv + 124) as f32, np.album, &big(17.0, Weight::Regular, soft), tw);
         }
+        let time = format!("{}   {}", np.elapsed, np.remaining);
+        let ts = big(15.0, Weight::Regular, soft);
+        let w = text::measure(f, &time, &ts);
+        text::draw_land(c, f, ((lu + luw - 20) as f32 - w, (lv + lvh - 18) as f32), &time, &ts, w + 2.0);
     }
-    // The head opening at the bottom edge.
-    let (hx, hw, hh) = (bx + k(0.3), w - 2 * k(0.3), k(0.09));
-    stroke_rect(c, hx, by + h - hh, hw, hh, t.line, 1);
-    for gx in [hx + hw / 5, hx + hw - hw / 5] {
-        widgets::disc(c, gx, by + h - hh / 2, 8, t.line);
+    // The window through the label: the tape packed on each reel (all on the left at the start
+    // of the song, all on the right at its end), the hubs and their teeth turning.
+    let (wu, wv, ww, wh) = (lw / 2 - 170, lv + 214 - 64, 340, 104);
+    land_rect(c, wu, wv, ww, wh, lit(t, Rgb888::new(18, 18, 20)));
+    land_stroke(c, wu, wv, ww, wh, ink, 2);
+    let p = np.progress.clamp(0.0, 1.0);
+    let cv = (wv + wh / 2) as f32;
+    let (rmin, rmax) = (24.0f32, 48.0f32);
+    let turn = spin(np) * 2.0;
+    for (cu, packed) in [((wu + 82) as f32, 1.0 - p), ((wu + ww - 82) as f32, p)] {
+        let r = rmin + (rmax - rmin) * packed;
+        land_disc(c, cu, cv, (2.0 * r) as u32, tape_col);
+        land_disc(c, cu, cv, 2 * rmin as u32 - 2, lit(t, Rgb888::new(225, 222, 214)));
+        land_disc(c, cu, cv, 18, lit(t, Rgb888::new(18, 18, 20)));
+        // The hub's teeth, dark on the pale hub, so its turning shows.
+        for k in 0..6 {
+            let a = turn + k as f32 * PI / 3.0;
+            land_disc(c, cu + 14.0 * a.cos(), cv + 14.0 * a.sin(), 8, lit(t, Rgb888::new(18, 18, 20)));
+        }
+        land_ring(c, cu, cv, rmin, edge, 1);
     }
+    // The head opening along the bottom edge, the tape across it, the rollers.
+    let (hv, hb) = (lh - 120, lh - 12);
+    for v in hv..hb {
+        let k = (v - hv) as f32 / (hb - hv) as f32;
+        // Bevelled: narrowing toward the edge, as a cassette's is.
+        let inset = (30.0 + 40.0 * k) as i32;
+        land_rect(c, 190 + inset, v, lw - 380 - 2 * inset, 1, lit(t, Rgb888::new(26, 26, 30)));
+    }
+    land_rect(c, 160, hb - 14, lw - 320, 3, tape_col);
+    for u in [250.0, (lw - 250) as f32] {
+        land_disc(c, u, (hb - 40) as f32, 30, edge);
+        land_disc(c, u, (hb - 40) as f32, 14, deck);
+    }
+    land_rect(c, lw / 2 - 30, hb - 34, 60, 22, edge);
 }
 
 #[cfg(test)]
