@@ -15,6 +15,11 @@
 >   `App::render`) draws every Sans and Mono in Legible and says capitals labels in lower case,
 >   through `measure` and `draw` alike; `widgets::set_quiet_line` drops the dividers. Same
 >   geometry, so the hit tests are untouched; the overflow test walks every screen in Pivot.
+> - **Pivot Now Playing picture**: `np_picture.rs` (`NpPicture` Cover · Meters · Record · Tape,
+>   saved as `np_picture=`, Settings row `ROW_NP_PICTURE`, Pivot only). Meters read the PCM tap's
+>   RMS (`Signal::meter`, 0 VU = −18 dBFS), else the band mean; Record and Tape turn on `viz_seed`
+>   via `App::np_picture_shown` in the shell's reel clock. The line under the title is
+>   `NowPlaying::album` and `place`, injected by `nav`. Checklist 52.18.
 > - **Misaligned embedded covers**: `art_load::embedded_window` moves the scanner's
 >   (`dataoffset`, `datasize`) back to the last JPEG/PNG signature within 64 bytes when the bytes at
 >   the offset are not one (ID3v2.4 APIC with UTF-8 encoding, read by the scanner as UTF-16);

@@ -715,6 +715,12 @@ pub struct NowPlaying<'a> {
     pub skin: Option<&'a crate::skin::Skin>,
     /// The Cassette style's tape, when the shell has one loaded (`tape.rs`).
     pub tape: Option<&'a crate::tape::Tape>,
+    /// The playing track's album, and its place in what is playing (`3 / 12`; 0 = unknown).
+    /// Injected by `nav`, which knows the list; the shell passes "" and (0, 0).
+    pub album: &'a str,
+    pub place: (usize, usize),
+    /// What Pivot draws in the picture square (Settings ▸ Now Playing ▸ Picture). Injected by `nav`.
+    pub picture: crate::np_picture::NpPicture,
 }
 
 /// The pages you swipe between on Now Playing. The visualiser used to be painted ON the cover,
@@ -1408,6 +1414,9 @@ mod tests {
         NowPlaying {
             skin: None,
             tape: None,
+            album: "",
+            place: (0, 0),
+            picture: Default::default(),
             title: "Atlas Hands",
             artist: "Benjamin Francis Leftwich",
             codec: "FLAC · 24bit / 96.0 kHz",

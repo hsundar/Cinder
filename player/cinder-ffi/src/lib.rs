@@ -1646,6 +1646,7 @@ fn settings_body(r: &Render) -> String {
         down.token()
     ));
     body.push_str(&format!("np_button={}\n", r.app.np_button().token()));
+    body.push_str(&format!("np_picture={}\n", r.app.np_picture().token()));
     // Night's schedule. Night itself is not saved (every boot starts in day, see "night" in the
     // loader); with the schedule on, the first clock tick puts it where the hour says.
     let (on, from, until) = r.app.night_schedule();
@@ -3304,10 +3305,15 @@ pub extern "C" fn cinder_render_tick() {
     }
     // Visualiser: advance + force a repaint ONLY while playing on the Now Playing screen (and
     // enabled), and at most ~20 fps (the pump may tick at 60) — that bounds the battery cost.
-    let animate = r.app.viz_visible() && r.np.playing;
+    // Pivot's moving picture: the VU meters read the tap like a visualiser; the record and the
+    // tape turn on its clock (`np_picture.rs`).
+    let picture = r.app.np_picture_shown(r.art_full.is_some());
+    let meters = picture == Some(cinder_ui::np_picture::NpPicture::Meters);
+    let animate = (r.app.viz_visible() || meters) && r.np.playing;
     // A cassette tape's reel turns while the song plays, on the same clock as the visualiser.
-    let reel_turns =
-        r.app.tape_view() && r.app.current() == cinder_ui::nav::Screen::NowPlaying && r.np.playing;
+    let reel_turns = ((r.app.tape_view() && r.app.current() == cinder_ui::nav::Screen::NowPlaying)
+        || picture.is_some_and(|p| p.turns()))
+        && r.np.playing;
     if animate || reel_turns {
         let since = r.last_viz.elapsed().as_millis() as f32;
         if since >= 50.0 {
@@ -3419,6 +3425,9 @@ pub extern "C" fn cinder_render_tick() {
     let np = NowPlaying {
         skin: r.skin.as_ref(),
         tape: r.tape.as_ref(),
+        album: "",
+        place: (0, 0),
+        picture: Default::default(),
         title: &r.np.title,
         artist: &r.np.artist,
         codec: &r.np.codec,
@@ -3577,6 +3586,9 @@ pub extern "C" fn cinder_render_bench(frames: libc::c_int, scroll: libc::c_int) 
         let np2 = NowPlaying {
             skin: None,
             tape: None,
+            album: "",
+            place: (0, 0),
+            picture: Default::default(),
             title: &np.title,
             artist: &np.artist,
             codec: &np.codec,
@@ -10348,6 +10360,9 @@ pub extern "C" fn cinder_settings_load(path: *const c_char) -> libc::c_int {
                         }
                         r.app.set_night_schedule(on, from, until);
                     }
+                    "np_picture" => r
+                        .app
+                        .set_np_picture(cinder_ui::np_picture::NpPicture::from_token(v)),
                     "np_button" => r
                         .app
                         .set_np_button(cinder_ui::now_playing::NpButton::from_token(v)),

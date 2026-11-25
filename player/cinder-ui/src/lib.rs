@@ -43,6 +43,7 @@ pub mod nav;
 pub mod nc;
 pub mod netradio;
 pub mod now_playing;
+pub mod np_picture;
 pub mod np_styles;
 pub mod onboarding;
 pub mod opt;

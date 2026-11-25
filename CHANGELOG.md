@@ -31,6 +31,12 @@ level the commit history supports; from `v0.1.6` onward, entries are written as 
   wells or chip boxes, and its actions as words in the accent. Nothing a finger lands on moves.
   *Device-unverified* (host tests, previews and the simulator).
 
+- **Pivot Now Playing: the album, and a picture to choose.** Under the title, the album and the
+  song's place in what is playing ("3 / 12") replace the format, which the status bar already
+  shows. Settings ▸ Now Playing ▸ Picture puts analog VU meters, a turning record (the cover as
+  its label, the tonearm moving in as the song plays) or a winding cassette in the cover's place;
+  with Cover chosen, a song without a cover gets the record. *Device-unverified.*
+
 - **Podcast covers on MP3 episodes.** Sony's scanner misreads the cover frame of an ID3v2.4
   file whose description is marked UTF-8 and records the picture 15 or 20 bytes past its start,
   so every MP3 podcast showed no cover. Cinder now finds the picture's real start just before.

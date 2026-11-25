@@ -1943,6 +1943,8 @@ pub struct App {
     np_swipe_down: crate::settings::SwipeTo,
     /// Now Playing's third toolbar button (Settings ▸ Now Playing button, #51). Bluetooth by default.
     np_button: crate::now_playing::NpButton,
+    /// Pivot Now Playing's picture (Settings ▸ Now Playing ▸ Picture).
+    np_picture: crate::np_picture::NpPicture,
     /// Where Now Playing was opened from, for Back on it (the left-edge swipe, the back arrow).
     /// Opening Now Playing resets the stack (`go`), so without this Back there had nowhere to go
     /// and did nothing (owner, 2026-11-03: "hard to activate on the now playing screen").
@@ -2448,6 +2450,7 @@ impl Default for App {
             np_swipe_up: crate::settings::SwipeTo::Off,
             np_swipe_down: crate::settings::SwipeTo::Off,
             np_button: crate::now_playing::NpButton::Bluetooth,
+            np_picture: crate::np_picture::NpPicture::Cover,
             np_from: Vec::new(),
             quick_open: false,
             pins: std::array::from_fn(|_| None),
@@ -5035,6 +5038,10 @@ impl App {
             }
             crate::settings::ROW_NP_BUTTON => {
                 self.np_button = self.np_button.next();
+                vec![]
+            }
+            crate::settings::ROW_NP_PICTURE => {
+                self.np_picture = self.np_picture.next();
                 vec![]
             }
             crate::settings::ROW_SHUFFLE => {
@@ -9003,6 +9010,28 @@ impl App {
         self.style == crate::style::Style::Pivot
     }
 
+    /// The playing track's album name, from the library: "" when it is not in it.
+    fn playing_album_name(&self) -> String {
+        let Some(id) = self.context.get(self.context_idx).map(|r| r.album_id).filter(|id| *id != 0) else {
+            return String::new();
+        };
+        self.lib.albums_flat().iter().find(|a| a.album_id == id).map(|a| a.name.clone()).unwrap_or_default()
+    }
+
+    pub fn np_picture(&self) -> crate::np_picture::NpPicture {
+        self.np_picture
+    }
+
+    pub fn set_np_picture(&mut self, p: crate::np_picture::NpPicture) {
+        self.np_picture = p;
+    }
+
+    /// Pivot's Now Playing is on the glass, on its cover page, with `has_cover` saying whether the
+    /// song has one: the picture drawn there, else None.
+    pub fn np_picture_shown(&self, has_cover: bool) -> Option<crate::np_picture::NpPicture> {
+        (self.pivot() && self.is_now_playing() && self.np_page == 0).then(|| self.np_picture.shown(has_cover))
+    }
+
     fn menu_max_scroll(&self) -> i32 {
         if self.pivot() {
             crate::pivot::home_max_scroll(self.menu_len())
@@ -12352,12 +12381,21 @@ impl App {
                 // for a ballad and for a drum solo. A visualiser that doesn't represent the audio
                 // is a lie the same way a hardcoded clock is, so it now draws nothing instead.
                 let live = np.viz_levels.is_some();
+                let album = self.playing_album_name();
                 let np2 = NowPlaying {
                     viz_kind: self.viz_kind,
                     viz_size: if live { self.viz_size } else { 0 },
                     page: self.np_page,
                     lyrics: self.lyrics_button(),
                     spoken: np.spoken,
+                    // The library's answer; what came in when it has none (a preview, a test).
+                    album: if album.is_empty() { np.album } else { &album },
+                    place: if self.context_idx < self.context.len() {
+                        (self.context_idx + 1, self.context.len())
+                    } else {
+                        np.place
+                    },
+                    picture: self.np_picture,
                     ..*np
                 };
                 if let (true, Some(tape)) = (self.tape_view(), np2.tape) {
@@ -12419,7 +12457,8 @@ impl App {
                     if self.opt(Opt::NpBack) {
                         crate::now_playing::back_chip(c, &theme);
                     }
-                    if self.opt(Opt::NpCount) {
+                    // Pivot shows the place under the title already.
+                    if self.opt(Opt::NpCount) && !self.pivot() {
                         crate::now_playing::count_chip(
                             c,
                             &theme,
@@ -13242,6 +13281,7 @@ impl App {
                     swipe_up: self.np_swipe_up,
                     swipe_down: self.np_swipe_down,
                     np_button: self.np_button,
+                    np_picture: self.np_picture,
                     shuffle_by: self.shuffle_by.label(),
                     usb_dac: self.usb_dac_on,
                     battery_care: self.battery_care,
@@ -20866,6 +20906,9 @@ mod tests {
         NowPlaying {
             skin: None,
             tape: None,
+            album: "",
+            place: (0, 0),
+            picture: Default::default(),
             title: "t",
             artist: "a",
             codec: "",
@@ -21422,6 +21465,9 @@ mod tests {
         let np = NowPlaying {
             skin: None,
             tape: None,
+            album: "",
+            place: (0, 0),
+            picture: Default::default(),
             title: "t",
             artist: "a",
             codec: "",
@@ -27030,6 +27076,9 @@ mod tests {
         let mut np = NowPlaying {
             skin: None,
             tape: None,
+            album: "",
+            place: (0, 0),
+            picture: Default::default(),
             title: "Atlas Hands",
             artist: "Benjamin Francis Leftwich",
             codec: "FLAC",
@@ -28346,6 +28395,9 @@ mod palette_tests {
         let np = NowPlaying {
             skin: None,
             tape: None,
+            album: "",
+            place: (0, 0),
+            picture: Default::default(),
             title: "",
             artist: "",
             codec: "",
@@ -29534,6 +29586,42 @@ mod r4_tests {
             "a sideways swipe does not queue in Pivot"
         );
         assert_eq!(a.current(), Screen::Album);
+    }
+
+    /// Pivot Now Playing names the playing song's album (from the library) and its place, and
+    /// Settings offers the picture only in Pivot.
+    #[test]
+    fn pivot_now_playing_knows_the_album_and_the_picture_setting_cycles() {
+        let mut a = pivot_app();
+        // A song playing from an album. The sample's albums have no ids; the player's database
+        // gives songs and albums the same one.
+        let album = &mut a.lib.album_groups[0].albums[0];
+        album.album_id = 777;
+        let want = album.name.clone();
+        let mut song = a.lib.songs[0].clone();
+        song.album_id = 777;
+        a.context = vec![song.clone(), song];
+        a.context_idx = 1;
+        assert!(!want.is_empty());
+        assert_eq!(a.playing_album_name(), want);
+        a.context_idx = 5;
+        assert_eq!(a.playing_album_name(), "", "nothing playing from the list: no album");
+        a.context_idx = 1;
+        // The picture: shown on Pivot's cover page only, a record standing in for a missing cover.
+        use crate::np_picture::NpPicture;
+        a.go_for_preview(Screen::NowPlaying);
+        assert_eq!(a.np_picture_shown(false), Some(NpPicture::Record));
+        assert_eq!(a.np_picture_shown(true), Some(NpPicture::Cover));
+        let before = a.np_picture();
+        a.set_np_picture(before.next());
+        assert_ne!(a.np_picture(), before);
+        a.set_style(crate::style::Style::Cinder);
+        assert_eq!(a.np_picture_shown(true), None, "other styles have their own pictures");
+        crate::text::set_pivot_type(false);
+        assert!(!crate::settings::shown(crate::settings::ROW_NP_PICTURE, true));
+        crate::text::set_pivot_type(true);
+        assert!(crate::settings::shown(crate::settings::ROW_NP_PICTURE, true));
+        crate::text::set_pivot_type(false);
     }
 
     #[test]

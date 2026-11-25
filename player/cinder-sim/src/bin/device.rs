@@ -261,6 +261,9 @@ fn main() {
     let mut np = NowPlaying {
         skin: None,
         tape: None,
+        album: "",
+        place: (0, 0),
+        picture: Default::default(),
         title: if std::env::args().any(|a| a == "--devanagari") {
             "कश्चित् कान्ताविरहगुरुणा स्वाधिकारात्प्रमत्तः"
         } else if std::env::args().any(|a| a == "--long-title") {

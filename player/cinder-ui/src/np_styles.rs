@@ -561,8 +561,14 @@ fn pivot_render(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying, l: &Lay
         c.clear_clip_x();
         let x = left as i32;
         if np::page_from_index(np.page) == NpPage::Cover {
-            cover(c, t, np, x, art_y, art);
-            cover_viz(c, t, np, x + 12, art - 24, art_y + art - 8);
+            // The cover, or the moving picture chosen instead (or standing in for a missing cover).
+            match np.picture.shown(np.art_full.is_some()) {
+                crate::np_picture::NpPicture::Cover => {
+                    cover(c, t, np, x, art_y, art);
+                    cover_viz(c, t, np, x + 12, art - 24, art_y + art - 8);
+                }
+                p => crate::np_picture::draw(c, t, f, np, p, x, art_y, art),
+            }
         } else {
             audio_page(c, t, f, np, (x, art_y, art, art));
         }
@@ -591,15 +597,28 @@ fn pivot_render(c: &mut Canvas, t: &Theme, f: &FontSet, np: &NowPlaying, l: &Lay
             &leg(Weight::Regular, 30.0, t.ink),
             TEXT_W + 18.0,
         );
+        // The album and the track's place in what is playing. Not the format: the status bar
+        // already shows it, and the artist is the heading.
         let cs = leg(Weight::Regular, 16.0, t.dim);
+        let place = match np.place {
+            (i, n) if i > 0 && n > 1 => format!("{i} / {n}"),
+            _ => String::new(),
+        };
+        let pw = if place.is_empty() { 0.0 } else { text::measure(f, &place, &cs) + 14.0 };
+        let what = if np.album.is_empty() { np.codec } else { np.album };
+        // Right-aligned with the rail and the time left, below it.
+        let end = (ART_X + ART) as f32;
         text::draw(
             c,
             f,
             TEXT_X - 18.0,
             ARTIST_Y,
-            &widgets::fit(f, np.codec, &cs, TEXT_W + 18.0),
+            &widgets::fit(f, what, &cs, end - (TEXT_X - 18.0) - pw),
             &cs,
         );
+        if !place.is_empty() {
+            widgets::right(c, f, end, ARTIST_Y, &place, &TextStyle { color: t.faint, ..cs });
+        }
         let (hx, hy) = centre(l, Hit::Like);
         icons::heart(c, hx, hy, 24.0, if np.liked { t.acc } else { t.faint });
     }

@@ -74,6 +74,7 @@ fn sample_settings(page: Option<usize>) -> settings::SettingsView<'static> {
         swipe_up: settings::SwipeTo::Off,
         swipe_down: settings::SwipeTo::Off,
         np_button: cinder_ui::now_playing::NpButton::Bluetooth,
+        np_picture: Default::default(),
         volume_limit: false,
         big_view: false,
         big_bar: false,
@@ -214,6 +215,9 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
     let np = now_playing::NowPlaying {
         skin: None,
         tape: None,
+        album: "",
+        place: (0, 0),
+        picture: Default::default(),
         title: "Atlas Hands",
         artist: "Benjamin Francis Leftwich",
         codec: "FLAC · 24bit / 96.0 kHz",
@@ -4454,11 +4458,27 @@ fn render_all(out: &mut dyn FnMut(&str, &Canvas), opts: &Opts) {
             cinder_ui::art::gradient_image(&cinder_ui::theme::Theme::day(), 480, 480, "kind", 1.0);
         let covered = now_playing::NowPlaying {
             art_full: Some(&cover),
+            album: "Last Smoke Before the Snowstorm",
+            place: (3, 12),
             ..np
         };
         let mut c = Canvas::new();
         app.render(&mut c, &fonts, &covered);
         save(&c, "pivot_now_playing_cover");
+        // Settings ▸ Now Playing ▸ Picture: VU meters (fed a steady signal), a record, a tape.
+        let sig = cinder_ui::viz::Signal { meter: [0.8, 0.75, 0.66, 0.6], ..Default::default() };
+        let moving = now_playing::NowPlaying { viz_sig: Some(&sig), viz_seed: 1.3, ..covered };
+        for (name, p) in [
+            ("pivot_np_meters", cinder_ui::np_picture::NpPicture::Meters),
+            ("pivot_np_record", cinder_ui::np_picture::NpPicture::Record),
+            ("pivot_np_tape", cinder_ui::np_picture::NpPicture::Tape),
+        ] {
+            app.set_np_picture(p);
+            let mut c = Canvas::new();
+            app.render(&mut c, &fonts, &moving);
+            save(&c, name);
+        }
+        app.set_np_picture(cinder_ui::np_picture::NpPicture::Cover);
         // A book or a podcast playing: ◁ ▷ are 10 s back and 30 s ahead, in every style.
         let spoken = now_playing::NowPlaying { spoken: true, ..np };
         for (name, style) in [

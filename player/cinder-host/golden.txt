@@ -494,9 +494,12 @@ a4ac54e645605116 pivot_books
 807db0d71298f4a4 pivot_artist
 09c73a6865d9118f pivot_artist_songs
 a13b0f6d2099ffad pivot_playlist
-8fa729205206c709 pivot_now_playing
-ceb6dc74859466d5 pivot_now_playing_cover
-e8b0a213f68d89dd spoken_pivot
+32a6a526f7a28bca pivot_now_playing
+0afd1fca06f2366e pivot_now_playing_cover
+05070591163846a5 pivot_np_meters
+976845fa243ce3e4 pivot_np_record
+1942b6b6ff5bc70c pivot_np_tape
+5f7bdcd1acdf65be spoken_pivot
 c469d97f0728f131 spoken_cinder
 b1df4d3f9fac2237 spoken_terminal
 a394dfe597464401 pivot_up_next

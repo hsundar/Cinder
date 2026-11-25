@@ -17,7 +17,7 @@ use crate::theme::Theme;
 use crate::Canvas;
 
 /// Number of real rows. The home page's topic links are row ids after them ([`group_row`]).
-pub const ROWS: usize = 44;
+pub const ROWS: usize = 45;
 
 /// The topic pages: title, the home row's second line (what is inside), and the rows, in order.
 /// Every row is on exactly one page: here, or [`HOME_ROWS`].
@@ -34,6 +34,7 @@ pub const GROUPS: [(&str, &str, &[usize]); 7] = [
             ROW_SWIPE_UP,
             ROW_SWIPE_DOWN,
             ROW_NP_BUTTON,
+            ROW_NP_PICTURE,
             ROW_NP_BACK,
             ROW_NP_COUNT,
             ROW_NP_LYRICS,
@@ -158,6 +159,7 @@ pub fn shown(r: usize, lang: bool) -> bool {
         // The text layer's Pivot switch is the style on screen (`App::render` and `set_style`).
         ROW_BLUETOOTH | ROW_USB_DAC | ROW_FOLDERS => crate::text::pivot_type(),
         ROW_WIFI_LINK => crate::text::pivot_type() && crate::wifi::installed(),
+        ROW_NP_PICTURE => crate::text::pivot_type(),
         _ => true,
     }
 }
@@ -176,6 +178,9 @@ pub const ROW_SWIPE_DOWN: usize = 16;
 /// The third button on Now Playing's toolbar (#51): Bluetooth, as always, or Sound, Equalizer or the
 /// Menu. `now_playing::NpButton`.
 pub const ROW_NP_BUTTON: usize = 17;
+/// What Pivot's Now Playing shows in its picture square: the cover, VU meters, a record or a tape
+/// (`np_picture.rs`). Pivot only: the other styles have their own pictures.
+pub const ROW_NP_PICTURE: usize = 44;
 /// A back arrow at the top left of Now Playing (#51, plaquette): the same as the left-edge swipe,
 /// for anyone who does not know the swipe or finds it hard. OFF by default.
 pub const ROW_NP_BACK: usize = 18;
@@ -414,6 +419,8 @@ pub struct SettingsView<'a> {
     pub swipe_down: SwipeTo,
     /// Now Playing's third toolbar button (`ROW_NP_BUTTON`).
     pub np_button: crate::now_playing::NpButton,
+    /// Pivot Now Playing's picture (`ROW_NP_PICTURE`).
+    pub np_picture: crate::np_picture::NpPicture,
     /// What shuffle deals (`ROW_SHUFFLE`): "SONGS", "ALBUMS", "ARTISTS" or "SPREAD".
     pub shuffle_by: &'a str,
     /// The page on screen: `None` for home, else a [`GROUPS`] index.
@@ -485,6 +492,7 @@ fn trail<'a>(r: usize, v: &'a SettingsView) -> Trail<'a> {
         ROW_SWIPE_UP => Trail::Value(v.swipe_up.label()),
         ROW_SWIPE_DOWN => Trail::Value(v.swipe_down.label()),
         ROW_NP_BUTTON => Trail::Value(v.np_button.label()),
+        ROW_NP_PICTURE => Trail::Value(v.np_picture.label()),
         ROW_BIG => Trail::Switch(v.big_view),
         ROW_BIG_BAR => Trail::Switch(v.big_bar),
         ROW_BIG_ICONS => Trail::Switch(v.big_icons),
@@ -550,6 +558,7 @@ fn title(r: usize) -> &'static str {
         ROW_SWIPE_UP => crate::i18n::text("Swipe up"),
         ROW_SWIPE_DOWN => crate::i18n::text("Swipe down"),
         ROW_NP_BUTTON => crate::i18n::text("Now Playing button"),
+        ROW_NP_PICTURE => crate::i18n::text("Picture"),
         ROW_NP_BACK => crate::i18n::text("Back arrow"),
         ROW_NP_COUNT => crate::i18n::text("Track number"),
         ROW_NP_TINT => crate::i18n::text("Cover colours"),
@@ -613,6 +622,7 @@ fn sub_line<'a>(r: usize, v: &'a SettingsView) -> &'a str {
         ROW_BIG_ICONS => crate::i18n::text("Arrows and symbols"),
         ROW_SWIPE_UP | ROW_SWIPE_DOWN => crate::i18n::text("Opens the screen you pick"),
         ROW_NP_BUTTON => crate::i18n::text("The third one along the bottom"),
+        ROW_NP_PICTURE => crate::i18n::text("Cover, VU meters, record or tape"),
         ROW_NP_BACK => crate::i18n::text("Top left, like the edge swipe"),
         ROW_NP_COUNT => crate::i18n::text("Its place in what's playing"),
         ROW_NP_TINT => crate::i18n::text("Background from the album art"),
@@ -676,6 +686,7 @@ mod tests {
             swipe_up: SwipeTo::Off,
             swipe_down: SwipeTo::Off,
             np_button: crate::now_playing::NpButton::Bluetooth,
+            np_picture: Default::default(),
             usb_dac: false,
             battery_care: true,
             device: "78% · 34.4 °C",
